@@ -1,4 +1,7 @@
+import Link from "next/link";
 import { getCalendarMonth } from "@/services/post.service";
+import { getSelectedClientId } from "@/app/actions";
+import { prisma } from "@/lib/prisma";
 
 const DOW = ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"];
 const MONTH_NAMES = [
@@ -6,21 +9,43 @@ const MONTH_NAMES = [
   "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
 ];
 
-export default async function PublicationsPage() {
+function shiftMonth(year: number, month: number, delta: number) {
+  const d = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+}
+
+export default async function PublicationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ year?: string; month?: string }>;
+}) {
+  const params = await searchParams;
   const now = new Date();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth() + 1;
-  const byDay = await getCalendarMonth(year, month);
+  const year = Number(params.year) || now.getUTCFullYear();
+  const month = Number(params.month) || now.getUTCMonth() + 1;
+
+  const selectedClientId = await getSelectedClientId();
+  const selectedClient = selectedClientId
+    ? await prisma.client.findUnique({ where: { id: selectedClientId }, select: { name: true } })
+    : null;
+
+  const byDay = await getCalendarMonth(year, month, selectedClientId);
 
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const firstDow = new Date(Date.UTC(year, month - 1, 1)).getUTCDay(); // 0=Sun
   const leadingBlanks = (firstDow + 6) % 7; // convert to Mon-first offset
+  const isCurrentMonth = year === now.getUTCFullYear() && month === now.getUTCMonth() + 1;
   const today = now.getUTCDate();
+
+  const prev = shiftMonth(year, month, -1);
+  const next = shiftMonth(year, month, 1);
 
   return (
     <>
       <div className="bc-topbar">
-        <h2>Publications</h2>
+        <h2>
+          Publications {selectedClient ? <span className="accent">— {selectedClient.name}</span> : null}
+        </h2>
       </div>
 
       <div className="bc-section-title">
@@ -29,6 +54,11 @@ export default async function PublicationsPage() {
             {MONTH_NAMES[month - 1]} {year}
           </span>
           Calendrier de publication
+        </div>
+        <div className="bc-time-toggle" style={{ background: "var(--bc-surface-2)" }}>
+          <Link href={`/publications?year=${prev.year}&month=${prev.month}`}>← Précédent</Link>
+          <Link href={`/publications?year=${now.getUTCFullYear()}&month=${now.getUTCMonth() + 1}`}>Aujourd&apos;hui</Link>
+          <Link href={`/publications?year=${next.year}&month=${next.month}`}>Suivant →</Link>
         </div>
       </div>
 
@@ -46,7 +76,7 @@ export default async function PublicationsPage() {
             const posts = byDay.get(day) ?? [];
             const visible = posts.slice(0, 3);
             return (
-              <div key={day} className={`bc-cal-cell${day === today ? " today" : ""}`}>
+              <div key={day} className={`bc-cal-cell${isCurrentMonth && day === today ? " today" : ""}`}>
                 <span className="bc-cal-date">{day}</span>
                 {visible.map((p, i) => (
                   <span key={i} className="bc-cal-chip" style={{ background: p.color }} title={p.title}>
@@ -58,6 +88,12 @@ export default async function PublicationsPage() {
             );
           })}
         </div>
+
+        {byDay.size === 0 && (
+          <p style={{ color: "var(--bc-text-faint)", fontStyle: "italic", marginTop: 14 }}>
+            Aucune publication programmée ce mois-ci{selectedClient ? ` pour ${selectedClient.name}` : ""}.
+          </p>
+        )}
 
         <div className="bc-heatmap-legend">
           {["INSTAGRAM", "TIKTOK", "YOUTUBE", "FACEBOOK"].map((p) => (

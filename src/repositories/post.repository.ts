@@ -17,11 +17,11 @@ export const postRepository = {
     });
   },
 
-  findByMonth(year: number, month: number) {
+  findByMonth(year: number, month: number, clientId?: string | null) {
     const start = new Date(Date.UTC(year, month - 1, 1));
     const end = new Date(Date.UTC(year, month, 1));
     return prisma.post.findMany({
-      where: { scheduledTime: { gte: start, lt: end } },
+      where: { scheduledTime: { gte: start, lt: end }, ...(clientId ? { video: { clientId } } : {}) },
       include: { video: { select: { title: true, clientId: true } } },
       orderBy: { scheduledTime: "asc" },
     });

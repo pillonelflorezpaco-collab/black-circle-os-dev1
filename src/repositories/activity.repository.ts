@@ -2,8 +2,9 @@ import { prisma } from "@/lib/prisma";
 import type { ActivityEventType, ActivitySeverity, Prisma } from "@prisma/client";
 
 export const activityRepository = {
-  findRecent(limit = 20) {
+  findRecent(limit = 20, clientId?: string | null) {
     return prisma.activityLogEntry.findMany({
+      where: clientId ? { clientId } : undefined,
       include: { client: { select: { id: true, name: true } }, actor: { select: { id: true, name: true } } },
       orderBy: { createdAt: "desc" },
       take: limit,

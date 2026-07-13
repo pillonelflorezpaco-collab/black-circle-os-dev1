@@ -12,8 +12,8 @@ const PLATFORM_COLOR: Record<string, string> = {
   BLUESKY: "#7FA3C4",
 };
 
-export async function getCalendarMonth(year: number, month: number) {
-  const posts = await postRepository.findByMonth(year, month);
+export async function getCalendarMonth(year: number, month: number, clientId?: string | null) {
+  const posts = await postRepository.findByMonth(year, month, clientId);
   const byDay = new Map<number, { platform: string; color: string; title: string }[]>();
 
   for (const post of posts) {

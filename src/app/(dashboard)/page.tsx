@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getDashboardData } from "@/services/dashboard.service";
 import { Sparkline } from "@/components/dashboard/Sparkline";
 import { RingGauge } from "@/components/shared/RingGauge";
+import { getSelectedClientId } from "@/app/actions";
+import { prisma } from "@/lib/prisma";
 import type { Period } from "@/lib/dates";
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -27,12 +29,12 @@ export default async function DashboardPage({
     ? params.period
     : "month") as Period;
 
-  const data = await getDashboardData(period);
+  const selectedClientId = await getSelectedClientId();
+  const selectedClient = selectedClientId
+    ? await prisma.client.findUnique({ where: { id: selectedClientId }, select: { name: true } })
+    : null;
 
-  // 30-point placeholder trend shape while real day-by-day time-series aggregation isn't built yet
-  const spark = Array.from({ length: 30 }, (_, i) =>
-    Math.round(10 + i * 1.2 + (data.heroAmount / 3) * Math.sin(i / 4))
-  );
+  const data = await getDashboardData(period, selectedClientId);
 
   return (
     <>
@@ -48,7 +50,9 @@ export default async function DashboardPage({
 
       <div className="bc-hero-glow">
         <div className="top-row">
-          <div className="lab">Vue d&apos;ensemble — Production</div>
+          <div className="lab">
+            Vue d&apos;ensemble — Production {selectedClient ? `— ${selectedClient.name}` : ""}
+          </div>
           <div className="bc-time-toggle">
             {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
               <Link key={p} href={`/?period=${p}`} className={p === period ? "active" : ""} scroll={false}>
@@ -113,7 +117,7 @@ export default async function DashboardPage({
         </div>
 
         <div className="mini-chart-wrap">
-          <Sparkline data={spark} />
+          <Sparkline data={data.trend} />
         </div>
       </div>
 

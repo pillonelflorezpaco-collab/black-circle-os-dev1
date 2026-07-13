@@ -1,13 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { periodRange, previousPeriodRange, percentDelta, type Period } from "@/lib/dates";
 
-export async function getAnalyticsSummary(period: Period) {
+export async function getAnalyticsSummary(period: Period, clientId?: string | null) {
   const { start, end } = periodRange(period);
   const { start: prevStart, end: prevEnd } = previousPeriodRange(period);
+  const postFilter = clientId ? { post: { video: { clientId } } } : {};
 
   const [snapshots, prevSnapshots] = await Promise.all([
-    prisma.postMetricSnapshot.findMany({ where: { checkedAt: { gte: start, lt: end } } }),
-    prisma.postMetricSnapshot.findMany({ where: { checkedAt: { gte: prevStart, lt: prevEnd } } }),
+    prisma.postMetricSnapshot.findMany({ where: { checkedAt: { gte: start, lt: end }, ...postFilter } }),
+    prisma.postMetricSnapshot.findMany({ where: { checkedAt: { gte: prevStart, lt: prevEnd }, ...postFilter } }),
   ]);
 
   const sum = (list: typeof snapshots, key: keyof (typeof snapshots)[number]) =>
@@ -32,8 +33,9 @@ export async function getAnalyticsSummary(period: Period) {
   };
 }
 
-export async function getTopVideos(limit = 5) {
+export async function getTopVideos(limit = 5, clientId?: string | null) {
   const snapshots = await prisma.postMetricSnapshot.findMany({
+    where: clientId ? { post: { video: { clientId } } } : undefined,
     include: { post: { include: { video: { include: { client: true } } } } },
     orderBy: { views: "desc" },
     take: limit,
@@ -54,8 +56,9 @@ const DAYPARTS = [
 ];
 
 /** Real aggregation from seeded snapshots — sparse with little data, fills in as more posts accrue. */
-export async function getBestHoursHeatmap() {
+export async function getBestHoursHeatmap(clientId?: string | null) {
   const snapshots = await prisma.postMetricSnapshot.findMany({
+    where: clientId ? { post: { video: { clientId } } } : undefined,
     include: { post: { select: { scheduledTime: true } } },
   });
 
@@ -71,13 +74,34 @@ export async function getBestHoursHeatmap() {
   return { dayparts: DAYPARTS.map((p) => p.label), grid };
 }
 
-export async function getPlatformBreakdown() {
+export async function getPlatformBreakdown(clientId?: string | null) {
   const grouped = await prisma.post.groupBy({
     by: ["platform"],
-    where: { status: "PUBLISHED" },
+    where: { status: "PUBLISHED", ...(clientId ? { video: { clientId } } : {}) },
     _count: true,
   });
   return grouped
     .map((g) => ({ platform: g.platform, count: g._count }))
     .sort((a, b) => b.count - a.count);
+}
+
+/** Daily view totals for the trend chart, real data (falls back to a flat zero series with no posts yet). */
+export async function getDailyViewSeries(days: number, clientId?: string | null) {
+  const since = new Date(Date.now() - days * 86_400_000);
+  const snapshots = await prisma.postMetricSnapshot.findMany({
+    where: { checkedAt: { gte: since }, ...(clientId ? { post: { video: { clientId } } } : {}) },
+    select: { checkedAt: true, views: true },
+  });
+
+  const byDay = new Map<string, number>();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(Date.now() - (days - 1 - i) * 86_400_000);
+    byDay.set(d.toISOString().slice(0, 10), 0);
+  }
+  for (const s of snapshots) {
+    const key = new Date(s.checkedAt).toISOString().slice(0, 10);
+    if (byDay.has(key)) byDay.set(key, (byDay.get(key) ?? 0) + s.views);
+  }
+
+  return Array.from(byDay.entries()).map(([date, views]) => ({ date, views }));
 }

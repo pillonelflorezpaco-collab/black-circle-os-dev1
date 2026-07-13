@@ -185,6 +185,10 @@ body.bc-app {
 
 .bc-profile-switch { display: flex; align-items: center; gap: 8px; width: 100%; background: var(--bc-surface); border: 1px solid var(--bc-border); color: var(--bc-text); font-size: 12.5px; font-weight: 600; padding: 9px 10px; border-radius: 11px; cursor: pointer; margin-bottom: 18px; text-align: left; }
 .bc-profile-switch .pf-avatar { width: 22px; height: 22px; border-radius: 7px; background: var(--bc-amber-glow); color: var(--bc-amber); display: flex; align-items: center; justify-content: center; font-family: var(--font-fraunces), serif; font-style: italic; font-size: 11px; flex-shrink: 0; }
+.bc-profile-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 30; background: var(--bc-surface-2); border: 1px solid var(--bc-border-strong, var(--bc-border)); border-radius: 11px; padding: 5px; max-height: 260px; overflow-y: auto; box-shadow: 0 12px 28px rgba(0,0,0,.5); }
+.bc-profile-menu-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--bc-text-dim); font-size: 12.5px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.bc-profile-menu-item:hover { background: var(--bc-surface-3); color: var(--bc-text); }
+.bc-profile-menu-item.active { background: var(--bc-amber-glow); color: var(--bc-amber); font-weight: 600; }
 
 .bc-nav-label { font-family: var(--font-jbmono), monospace; font-size: 9.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--bc-text-faint); padding: 0 12px; margin: 14px 0 6px; }
 .bc-nav { display: flex; flex-direction: column; gap: 2px; }

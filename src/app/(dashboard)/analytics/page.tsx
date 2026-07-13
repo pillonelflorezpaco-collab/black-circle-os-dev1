@@ -5,8 +5,11 @@ import {
   getTopVideos,
   getPlatformBreakdown,
   getBestHoursHeatmap,
+  getDailyViewSeries,
 } from "@/services/analytics.service";
 import { Sparkline } from "@/components/dashboard/Sparkline";
+import { getSelectedClientId } from "@/app/actions";
+import { prisma } from "@/lib/prisma";
 import type { Period } from "@/lib/dates";
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -24,28 +27,38 @@ export default async function AnalyticsPage({
   const params = await searchParams;
   const period = (["today", "week", "month", "year"].includes(params.period ?? "") ? params.period : "month") as Period;
 
-  const [summary, topVideos, platforms, heatmap] = await Promise.all([
-    getAnalyticsSummary(period),
-    getTopVideos(),
-    getPlatformBreakdown(),
-    getBestHoursHeatmap(),
+  const selectedClientId = await getSelectedClientId();
+  const selectedClient = selectedClientId
+    ? await prisma.client.findUnique({ where: { id: selectedClientId }, select: { name: true } })
+    : null;
+  const scopeLabel = selectedClient ? selectedClient.name : "toutes plateformes";
+
+  const [summary, topVideos, platforms, heatmap, dailySeries] = await Promise.all([
+    getAnalyticsSummary(period, selectedClientId),
+    getTopVideos(5, selectedClientId),
+    getPlatformBreakdown(selectedClientId),
+    getBestHoursHeatmap(selectedClientId),
+    getDailyViewSeries(30, selectedClientId),
   ]);
 
   const maxHm = Math.max(1, ...heatmap.grid.flat());
   const maxPlat = Math.max(1, ...platforms.map((p) => p.count));
-  const spark = Array.from({ length: 30 }, (_, i) => Math.round(10 + i * 1.1 + (summary.views / 50) * Math.sin(i / 4)));
+  const spark = dailySeries.map((d) => ({
+    label: new Date(d.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" }),
+    value: d.views,
+  }));
 
   return (
     <>
       <div className="bc-topbar">
         <h2>
-          Analytics <span style={{ fontSize: 15, fontFamily: "var(--font-jbmono)", color: "var(--bc-text-faint)" }}>— toutes plateformes</span>
+          Analytics <span style={{ fontSize: 15, fontFamily: "var(--font-jbmono)", color: "var(--bc-text-faint)" }}>— {scopeLabel}</span>
         </h2>
       </div>
 
       <div className="bc-hero-glow">
         <div className="top-row">
-          <div className="lab">Performance — toutes plateformes</div>
+          <div className="lab">Performance — {scopeLabel}</div>
           <div className="bc-time-toggle">
             {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
               <Link key={p} href={`/analytics?period=${p}`} className={p === period ? "active" : ""} scroll={false}>
