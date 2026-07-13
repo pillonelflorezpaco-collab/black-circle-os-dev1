@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { setSelectedClient } from "@/app/actions";
+import { setSelectedClient, logout } from "@/app/actions";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
@@ -18,12 +18,16 @@ const NAV_ITEMS = [
 
 type ClientOption = { id: string; name: string };
 
+type SidebarUser = { name: string; role: string } | null;
+
 export function Sidebar({
   clients,
   selectedClientId,
+  user,
 }: {
   clients: ClientOption[];
   selectedClientId: string | null;
+  user: SidebarUser;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -125,8 +129,26 @@ export function Sidebar({
       </nav>
 
       <div className="bc-sidebar-foot">
-        <span className="who">Angels Pillonel</span>
-        <span>Admin · v0.1</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div>
+            <div className="who">{user?.name ?? "—"}</div>
+            <span>{user?.role ?? "—"} · v0.1</span>
+          </div>
+          {user && (
+            <form action={logout}>
+              <button
+                type="submit"
+                title="Se déconnecter"
+                style={{ background: "none", border: "none", color: "var(--bc-text-faint)", cursor: "pointer", padding: 4 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
+                  <path d="M5.5 12.5h-3a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3" />
+                  <path d="M9.5 9.5 12.5 7 9.5 4.5M12.5 7h-8" />
+                </svg>
+              </button>
+            </form>
+          )}
+        </div>
       </div>
     </aside>
   );

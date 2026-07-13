@@ -2,8 +2,13 @@
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { signOut } from "@/lib/auth";
 
 const CLIENT_COOKIE = "bc_client_id";
+
+export async function logout() {
+  await signOut({ redirectTo: "/login" });
+}
 
 export async function setSelectedClient(clientId: string | null) {
   const store = await cookies();

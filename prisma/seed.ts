@@ -1,34 +1,40 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
 import { encryptSecret } from "../src/lib/crypto";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
+// Dev-only shared password for every seeded account — change immediately for
+// any real deployment. Printed at the end of the seed run as a reminder.
+const DEV_PASSWORD = "blackcircle2026";
+
 async function main() {
   console.log("Seeding Black Circle OS — matches the approved mockup data...");
+  const passwordHash = await bcrypt.hash(DEV_PASSWORD, 10);
 
   const teamNord = await prisma.team.create({ data: { name: "Équipe Nord" } });
   const teamSud = await prisma.team.create({ data: { name: "Équipe Sud" } });
   const teamEst = await prisma.team.create({ data: { name: "Équipe Est" } });
 
   const admin = await prisma.user.create({
-    data: { name: "Angels Pillonel", email: "pillonelflorezpaco@gmail.com", role: "ADMIN" },
+    data: { name: "Angels Pillonel", email: "pillonelflorezpaco@gmail.com", role: "ADMIN", passwordHash },
   });
   const julien = await prisma.user.create({
-    data: { name: "Julien Marchand", email: "julien@blackcircle.agency", role: "MONTEUR", teamId: teamNord.id },
+    data: { name: "Julien Marchand", email: "julien@blackcircle.agency", role: "MONTEUR", teamId: teamNord.id, passwordHash },
   });
   const lea = await prisma.user.create({
-    data: { name: "Léa Roussel", email: "lea@blackcircle.agency", role: "MONTEUR", teamId: teamSud.id },
+    data: { name: "Léa Roussel", email: "lea@blackcircle.agency", role: "MONTEUR", teamId: teamSud.id, passwordHash },
   });
   const paul = await prisma.user.create({
-    data: { name: "Paul Vidal", email: "paul@blackcircle.agency", role: "ASSISTANT", teamId: teamEst.id },
+    data: { name: "Paul Vidal", email: "paul@blackcircle.agency", role: "ASSISTANT", teamId: teamEst.id, passwordHash },
   });
   await prisma.user.create({
-    data: { name: "Camille Ortiz", email: "camille@blackcircle.agency", role: "MONTEUR", teamId: teamNord.id },
+    data: { name: "Camille Ortiz", email: "camille@blackcircle.agency", role: "MONTEUR", teamId: teamNord.id, passwordHash },
   });
   await prisma.user.create({
-    data: { name: "Sacha Ben", email: "sacha@blackcircle.agency", role: "MANAGER" },
+    data: { name: "Sacha Ben", email: "sacha@blackcircle.agency", role: "MANAGER", passwordHash },
   });
 
   const blotatoPool1 = await prisma.blotatoAccount.create({
@@ -168,6 +174,8 @@ async function main() {
   });
 
   console.log(`Seeded: ${clients.length} clients, ${videoIndex} videos, 6 users, 6 integrations.`);
+  console.log(`\nDev login for every seeded user — password: ${DEV_PASSWORD}`);
+  console.log(`Admin: pillonelflorezpaco@gmail.com / ${DEV_PASSWORD}`);
 }
 
 main()
