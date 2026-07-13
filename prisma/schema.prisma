@@ -1,0 +1,344 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  MANAGER
+  ASSISTANT
+  MONTEUR
+  VIEWER
+}
+
+enum Platform {
+  INSTAGRAM
+  YOUTUBE
+  FACEBOOK
+  PINTEREST
+  THREADS
+  TWITTER
+  LINKEDIN
+  TIKTOK
+  BLUESKY
+}
+
+enum VideoStage {
+  RAW
+  A_EDITER
+  EN_EDITION
+  PRET_POUR_REVIEW
+  VALIDE
+  PROGRAMME
+  PUBLIE
+}
+
+enum PostStatus {
+  PENDING
+  SCHEDULED
+  IN_PROGRESS
+  PUBLISHED
+  FAILED
+}
+
+enum ClientStatus {
+  OK
+  WARN
+  CRIT
+}
+
+enum IntegrationType {
+  GOOGLE_DRIVE
+  N8N
+  BLOTATO
+  TELEGRAM
+  GOOGLE_SHEETS
+  CUSTOM_API
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  DISCONNECTED
+  COMING_SOON
+}
+
+enum ActivitySeverity {
+  OK
+  WARN
+  CRIT
+}
+
+enum ActivityEventType {
+  VIDEO_STAGE_CHANGED
+  POST_SCHEDULED
+  POST_PUBLISHED
+  POST_FAILED
+  CLIENT_CREATED
+  CLIENT_CONTENT_LOW
+  TEAM_MEMBER_ASSIGNED
+  INTEGRATION_ERROR
+  REPORT_GENERATED
+}
+
+enum ReportFormat {
+  PDF
+  CSV
+}
+
+enum ReportStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUTH / TEAM
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String?
+  role         Role     @default(VIEWER)
+  avatarUrl    String?
+  teamId       String?
+  team         Team?    @relation(fields: [teamId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  accounts             Account[]
+  sessions             Session[]
+  assignedVideos       Video[]            @relation("VideoAssignedEditor")
+  activityLogEntries   ActivityLogEntry[] @relation("ActivityActor")
+  generatedReports     Report[]           @relation("ReportGeneratedBy")
+
+  @@index([teamId])
+}
+
+// Standard NextAuth (Auth.js) Prisma adapter models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  members User[]
+  clients Client[] @relation("ClientAssignedTeam")
+}
+
+// ─────────────────────────────────────────────────────────────
+// CLIENTS & BLOTATO ACCOUNTS
+// ─────────────────────────────────────────────────────────────
+
+model BlotatoAccount {
+  id        String   @id @default(cuid())
+  label     String
+  apiKey    String // encrypted at rest (lib/crypto.ts), sent as `blotato-api-key` header
+  capLimit  Int      @default(200) // ~200 concurrently-scheduled posts cap (real Blotato constraint)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clients        Client[]
+  socialAccounts SocialAccount[]
+}
+
+model Client {
+  id               String          @id @default(cuid())
+  name             String
+  logoUrl          String?
+  status           ClientStatus    @default(OK)
+  teamId           String?
+  team             Team?           @relation("ClientAssignedTeam", fields: [teamId], references: [id])
+  blotatoAccountId String?
+  blotatoAccount   BlotatoAccount? @relation(fields: [blotatoAccountId], references: [id])
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  socialAccounts     SocialAccount[]
+  videos             Video[]
+  activityLogEntries ActivityLogEntry[]
+
+  @@index([blotatoAccountId])
+  @@index([teamId])
+}
+
+// A client's connection to one platform, routed through a shared BlotatoAccount
+model SocialAccount {
+  id                String         @id @default(cuid())
+  clientId          String
+  client            Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  blotatoAccountId  String
+  blotatoAccount    BlotatoAccount @relation(fields: [blotatoAccountId], references: [id])
+  platform          Platform
+  blotatoAccountRef String // Blotato's own per-platform accountId (target.accountId)
+  displayName       String?
+  isActive          Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+
+  posts Post[]
+
+  @@unique([clientId, platform])
+  @@index([blotatoAccountId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONTENT PIPELINE
+// ─────────────────────────────────────────────────────────────
+
+model Video {
+  id               String     @id @default(cuid())
+  title            String
+  clientId         String
+  client           Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  stage            VideoStage @default(RAW)
+  driveFileId      String?
+  driveUrl         String?
+  thumbnailUrl     String?
+  caption          String?    @db.Text
+  assignedEditorId String?
+  assignedEditor   User?      @relation("VideoAssignedEditor", fields: [assignedEditorId], references: [id])
+  stageUpdatedAt   DateTime   @default(now())
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  posts Post[]
+
+  @@index([clientId, stage])
+  @@index([assignedEditorId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// POSTS (Blotato mapping)
+// ─────────────────────────────────────────────────────────────
+
+model Post {
+  id                String        @id @default(cuid())
+  videoId           String
+  video             Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  socialAccountId   String
+  socialAccount     SocialAccount @relation(fields: [socialAccountId], references: [id])
+  platform          Platform
+
+  postSubmissionId String?    @unique
+  status           PostStatus @default(PENDING)
+  scheduledTime    DateTime
+  publicUrl        String?
+  errorMessage     String?    @db.Text
+  requestPayload   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  metricSnapshots PostMetricSnapshot[]
+
+  @@index([socialAccountId])
+  @@index([status, scheduledTime])
+  @@index([platform, scheduledTime])
+}
+
+// Append-only time-series, mirrors post-tracker/tracker.db `metrics` table
+model PostMetricSnapshot {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  checkedAt DateTime @default(now())
+
+  views      Int @default(0)
+  likes      Int @default(0)
+  comments   Int @default(0)
+  saves      Int @default(0)
+  shares     Int @default(0)
+  reach      Int @default(0)
+  engagement Int @default(0)
+
+  @@index([postId, checkedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// ACTIVITY / INTEGRATIONS / REPORTS
+// ─────────────────────────────────────────────────────────────
+
+model ActivityLogEntry {
+  id        String            @id @default(cuid())
+  eventType ActivityEventType
+  message   String
+  severity  ActivitySeverity  @default(OK)
+  clientId  String?
+  client    Client?           @relation(fields: [clientId], references: [id])
+  actorId   String?
+  actor     User?             @relation("ActivityActor", fields: [actorId], references: [id])
+  metadata  Json?
+  createdAt DateTime          @default(now())
+
+  @@index([createdAt])
+  @@index([clientId, createdAt])
+}
+
+model Integration {
+  id         String            @id @default(cuid())
+  type       IntegrationType   @unique
+  label      String
+  status     IntegrationStatus @default(DISCONNECTED)
+  lastSyncAt DateTime?
+  lastError  String?           @db.Text
+  configJson Json?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+}
+
+model Report {
+  id            String       @id @default(cuid())
+  name          String
+  format        ReportFormat
+  status        ReportStatus @default(PENDING)
+  fileUrl       String?
+  sizeBytes     Int?
+  generatedById String?
+  generatedBy   User?        @relation("ReportGeneratedBy", fields: [generatedById], references: [id])
+  paramsJson    Json?
+  createdAt     DateTime     @default(now())
+  completedAt   DateTime?
+
+  @@index([createdAt])
+}
