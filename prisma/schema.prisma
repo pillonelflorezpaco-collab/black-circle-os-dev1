@@ -56,6 +56,7 @@ enum ClientStatus {
 
 enum IntegrationType {
   GOOGLE_DRIVE
+  GOOGLE_CALENDAR
   N8N
   BLOTATO
   TELEGRAM
