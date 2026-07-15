@@ -1,7 +1,15 @@
-export type Period = "today" | "week" | "month" | "year";
+export type Period = "today" | "week" | "month" | "year" | "custom";
 
-/** Returns the [start, end) UTC range for a given period, anchored to now. */
-export function periodRange(period: Period, now: Date = new Date()): { start: Date; end: Date } {
+export type DateRange = { start: Date; end: Date };
+
+/**
+ * Returns the [start, end) UTC range for a given period, anchored to now.
+ * For "custom", `custom` supplies the exact range (falls back to the last
+ * month if omitted, e.g. before the user has picked both dates yet).
+ */
+export function periodRange(period: Period, now: Date = new Date(), custom?: DateRange): DateRange {
+  if (period === "custom" && custom) return custom;
+
   const end = new Date(now);
   const start = new Date(now);
 
@@ -13,6 +21,7 @@ export function periodRange(period: Period, now: Date = new Date()): { start: Da
       start.setDate(start.getDate() - 7);
       break;
     case "month":
+    case "custom":
       start.setMonth(start.getMonth() - 1);
       break;
     case "year":
@@ -24,8 +33,14 @@ export function periodRange(period: Period, now: Date = new Date()): { start: Da
 }
 
 /** The equivalent-length prior period, for computing a "+X% vs période précédente" delta. */
-export function previousPeriodRange(period: Period, now: Date = new Date()): { start: Date; end: Date } {
-  const { start: currentStart } = periodRange(period, now);
+export function previousPeriodRange(period: Period, now: Date = new Date(), custom?: DateRange): DateRange {
+  const { start: currentStart, end: currentEnd } = periodRange(period, now, custom);
+
+  if (period === "custom" && custom) {
+    const lengthMs = currentEnd.getTime() - currentStart.getTime();
+    return { start: new Date(currentStart.getTime() - lengthMs), end: currentStart };
+  }
+
   const { start, end } = periodRange(period, currentStart);
   return { start, end };
 }

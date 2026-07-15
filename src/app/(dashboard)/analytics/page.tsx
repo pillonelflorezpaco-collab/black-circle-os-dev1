@@ -1,5 +1,4 @@
 import { Fragment } from "react";
-import Link from "next/link";
 import {
   getAnalyticsSummary,
   getTopVideos,
@@ -8,24 +7,35 @@ import {
   getDailyViewSeries,
 } from "@/services/analytics.service";
 import { Sparkline } from "@/components/dashboard/Sparkline";
+import { PeriodToggle } from "@/components/shared/PeriodToggle";
 import { getSelectedClientId } from "@/app/actions";
 import { prisma } from "@/lib/prisma";
-import type { Period } from "@/lib/dates";
+import type { Period, DateRange } from "@/lib/dates";
 
 const PERIOD_LABELS: Record<Period, string> = {
   today: "Aujourd'hui",
   week: "Cette semaine",
   month: "Ce mois",
   year: "Cette année",
+  custom: "Période choisie",
 };
 
 export default async function AnalyticsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; from?: string; to?: string }>;
 }) {
   const params = await searchParams;
-  const period = (["today", "week", "month", "year"].includes(params.period ?? "") ? params.period : "month") as Period;
+  const period = (["today", "week", "month", "year", "custom"].includes(params.period ?? "")
+    ? params.period
+    : "month") as Period;
+
+  let customRange: DateRange | undefined;
+  if (period === "custom" && params.from && params.to) {
+    const start = new Date(`${params.from}T00:00:00`);
+    const end = new Date(`${params.to}T23:59:59.999`);
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) customRange = { start, end };
+  }
 
   const selectedClientId = await getSelectedClientId();
   const selectedClient = selectedClientId
@@ -34,7 +44,7 @@ export default async function AnalyticsPage({
   const scopeLabel = selectedClient ? selectedClient.name : "toutes plateformes";
 
   const [summary, topVideos, platforms, heatmap, dailySeries] = await Promise.all([
-    getAnalyticsSummary(period, selectedClientId),
+    getAnalyticsSummary(period, selectedClientId, customRange),
     getTopVideos(5, selectedClientId),
     getPlatformBreakdown(selectedClientId),
     getBestHoursHeatmap(selectedClientId),
@@ -59,13 +69,7 @@ export default async function AnalyticsPage({
       <div className="bc-hero-glow">
         <div className="top-row">
           <div className="lab">Performance — {scopeLabel}</div>
-          <div className="bc-time-toggle">
-            {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-              <Link key={p} href={`/analytics?period=${p}`} className={p === period ? "active" : ""} scroll={false}>
-                {PERIOD_LABELS[p]}
-              </Link>
-            ))}
-          </div>
+          <PeriodToggle period={period} from={params.from} to={params.to} />
         </div>
         <div className="bc-hero-split">
           <div>

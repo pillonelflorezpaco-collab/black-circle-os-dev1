@@ -1,9 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { periodRange, previousPeriodRange, percentDelta, type Period } from "@/lib/dates";
+import { periodRange, previousPeriodRange, percentDelta, type Period, type DateRange } from "@/lib/dates";
 
-export async function getAnalyticsSummary(period: Period, clientId?: string | null) {
-  const { start, end } = periodRange(period);
-  const { start: prevStart, end: prevEnd } = previousPeriodRange(period);
+export async function getAnalyticsSummary(period: Period, clientId?: string | null, customRange?: DateRange) {
+  const { start, end } = periodRange(period, undefined, customRange);
+  const { start: prevStart, end: prevEnd } = previousPeriodRange(period, undefined, customRange);
   const postFilter = clientId ? { post: { video: { clientId } } } : {};
 
   const [snapshots, prevSnapshots] = await Promise.all([

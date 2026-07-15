@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { activityRepository } from "@/repositories/activity.repository";
-import { periodRange, previousPeriodRange, percentDelta, type Period } from "@/lib/dates";
+import { periodRange, previousPeriodRange, percentDelta, type Period, type DateRange } from "@/lib/dates";
 
-export async function getDashboardData(period: Period, clientId?: string | null) {
-  const { start, end } = periodRange(period);
-  const { start: prevStart, end: prevEnd } = previousPeriodRange(period);
+export async function getDashboardData(period: Period, clientId?: string | null, customRange?: DateRange) {
+  const { start, end } = periodRange(period, undefined, customRange);
+  const { start: prevStart, end: prevEnd } = previousPeriodRange(period, undefined, customRange);
   const clientFilter = clientId ? { video: { clientId } } : {};
   const videoClientFilter = clientId ? { clientId } : {};
 

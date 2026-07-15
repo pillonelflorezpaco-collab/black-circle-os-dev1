@@ -1,19 +1,20 @@
-import Link from "next/link";
 import { getDashboardData } from "@/services/dashboard.service";
 import { getViewsByAccount } from "@/services/analytics.service";
 import { PLATFORM_COLOR } from "@/services/post.service";
 import { Sparkline } from "@/components/dashboard/Sparkline";
 import { RingGauge } from "@/components/shared/RingGauge";
+import { PeriodToggle } from "@/components/shared/PeriodToggle";
 import { getSelectedClientId } from "@/app/actions";
 import { prisma } from "@/lib/prisma";
 import { formatCompactNumber } from "@/lib/utils";
-import type { Period } from "@/lib/dates";
+import type { Period, DateRange } from "@/lib/dates";
 
 const PERIOD_LABELS: Record<Period, string> = {
   today: "Aujourd'hui",
   week: "Cette semaine",
   month: "Ce mois",
   year: "Cette année",
+  custom: "période choisie",
 };
 
 function severityIcon(severity: "OK" | "WARN" | "CRIT") {
@@ -25,12 +26,19 @@ function severityIcon(severity: "OK" | "WARN" | "CRIT") {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; from?: string; to?: string }>;
 }) {
   const params = await searchParams;
-  const period = (["today", "week", "month", "year"].includes(params.period ?? "")
+  const period = (["today", "week", "month", "year", "custom"].includes(params.period ?? "")
     ? params.period
     : "month") as Period;
+
+  let customRange: DateRange | undefined;
+  if (period === "custom" && params.from && params.to) {
+    const start = new Date(`${params.from}T00:00:00`);
+    const end = new Date(`${params.to}T23:59:59.999`);
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) customRange = { start, end };
+  }
 
   const selectedClientId = await getSelectedClientId();
   const selectedClient = selectedClientId
@@ -38,7 +46,7 @@ export default async function DashboardPage({
     : null;
 
   const [data, viewsByAccount] = await Promise.all([
-    getDashboardData(period, selectedClientId),
+    getDashboardData(period, selectedClientId, customRange),
     getViewsByAccount(selectedClientId),
   ]);
   const maxViews = viewsByAccount.length > 0 ? viewsByAccount[0].views : 0;
@@ -60,13 +68,7 @@ export default async function DashboardPage({
           <div className="lab">
             Vue d&apos;ensemble — Production {selectedClient ? `— ${selectedClient.name}` : ""}
           </div>
-          <div className="bc-time-toggle">
-            {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-              <Link key={p} href={`/?period=${p}`} className={p === period ? "active" : ""} scroll={false}>
-                {PERIOD_LABELS[p]}
-              </Link>
-            ))}
-          </div>
+          <PeriodToggle period={period} from={params.from} to={params.to} />
         </div>
 
         <div className="bc-hero-split">
