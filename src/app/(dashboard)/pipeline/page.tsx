@@ -1,8 +1,18 @@
 import { listPipelineVideos } from "@/services/video.service";
 import { KanbanBoard } from "@/components/pipeline/KanbanBoard";
+import { auth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
+import { clientRepository } from "@/repositories/client.repository";
+import { userRepository } from "@/repositories/user.repository";
 
 export default async function PipelinePage() {
-  const videos = await listPipelineVideos();
+  const [videos, session, clients, users] = await Promise.all([
+    listPipelineVideos(),
+    auth(),
+    clientRepository.findMany(),
+    userRepository.findMany(),
+  ]);
+  const canEdit = !!session?.user && can(session.user.role, "editerPipeline");
 
   return (
     <>
@@ -14,11 +24,18 @@ export default async function PipelinePage() {
         </div>
       </div>
       <KanbanBoard
+        canEdit={canEdit}
+        clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+        editors={users.map((u) => ({ id: u.id, name: u.name }))}
         initialVideos={videos.map((v) => ({
           id: v.id,
           title: v.title,
           stage: v.stage,
+          clientId: v.clientId,
           clientName: v.client.name,
+          assignedEditorId: v.assignedEditorId,
+          driveUrl: v.driveUrl,
+          caption: v.caption,
           editorInitials: v.assignedEditor
             ? v.assignedEditor.name
                 .split(" ")
@@ -26,6 +43,7 @@ export default async function PipelinePage() {
                 .join("")
                 .toUpperCase()
             : "—",
+          lastEditedByName: v.lastEditedBy?.name ?? null,
         }))}
       />
     </>

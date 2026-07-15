@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { PipelineVideoModal, type PipelineVideoEditTarget } from "./PipelineVideoModal";
 
 type VideoStage = "RAW" | "A_EDITER" | "EN_EDITION" | "PRET_POUR_REVIEW" | "VALIDE" | "PROGRAMME" | "PUBLIE";
 
@@ -8,8 +9,13 @@ type KanbanVideo = {
   id: string;
   title: string;
   stage: VideoStage;
+  clientId: string;
   clientName: string;
   editorInitials: string;
+  assignedEditorId: string | null;
+  driveUrl: string | null;
+  caption: string | null;
+  lastEditedByName: string | null;
 };
 
 const COLUMNS: { stage: VideoStage; label: string }[] = [
@@ -22,11 +28,27 @@ const COLUMNS: { stage: VideoStage; label: string }[] = [
   { stage: "PUBLIE", label: "Publié" },
 ];
 
-export function KanbanBoard({ initialVideos }: { initialVideos: KanbanVideo[] }) {
+export function KanbanBoard({
+  initialVideos,
+  clients,
+  editors,
+  canEdit,
+}: {
+  initialVideos: KanbanVideo[];
+  clients: { id: string; name: string }[];
+  editors: { id: string; name: string }[];
+  canEdit: boolean;
+}) {
   const [videos, setVideos] = useState(initialVideos);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<VideoStage | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<PipelineVideoEditTarget>(null);
+
+  useEffect(() => {
+    setVideos(initialVideos);
+  }, [initialVideos]);
 
   async function moveTo(id: string, stage: VideoStage) {
     const prev = videos;
@@ -51,6 +73,30 @@ export function KanbanBoard({ initialVideos }: { initialVideos: KanbanVideo[] })
     }
   }
 
+  function openCreate() {
+    setEditTarget(null);
+    setModalOpen(true);
+  }
+
+  function openEdit(v: KanbanVideo) {
+    if (!canEdit) return;
+    setEditTarget({
+      id: v.id,
+      title: v.title,
+      clientId: v.clientId,
+      driveUrl: v.driveUrl,
+      caption: v.caption,
+      assignedEditorId: v.assignedEditorId,
+      stage: v.stage,
+    });
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    setEditTarget(null);
+  }
+
   return (
     <div style={{ position: "relative" }}>
       {toast && (
@@ -71,6 +117,26 @@ export function KanbanBoard({ initialVideos }: { initialVideos: KanbanVideo[] })
           }}
         >
           {toast}
+        </div>
+      )}
+
+      {canEdit && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <button
+            onClick={openCreate}
+            style={{
+              background: "var(--bc-amber)",
+              color: "#1A1409",
+              border: "none",
+              fontWeight: 600,
+              fontSize: 12.5,
+              padding: "8px 16px",
+              borderRadius: 9,
+              cursor: "pointer",
+            }}
+          >
+            + Nouvelle vidéo
+          </button>
         </div>
       )}
 
@@ -125,7 +191,18 @@ export function KanbanBoard({ initialVideos }: { initialVideos: KanbanVideo[] })
                       opacity: dragId === v.id ? 0.4 : 1,
                     }}
                   >
-                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, lineHeight: 1.3 }}>{v.title}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6, marginBottom: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>{v.title}</div>
+                      {canEdit && (
+                        <button
+                          onClick={() => openEdit(v)}
+                          title="Modifier"
+                          style={{ background: "none", border: "none", color: "var(--bc-text-faint)", cursor: "pointer", fontSize: 12, flexShrink: 0, padding: 0 }}
+                        >
+                          ✎
+                        </button>
+                      )}
+                    </div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ fontSize: 10, color: "var(--bc-amber)", fontFamily: "var(--font-jbmono)" }}>{v.clientName}</span>
                       <span
@@ -146,6 +223,11 @@ export function KanbanBoard({ initialVideos }: { initialVideos: KanbanVideo[] })
                         {v.editorInitials}
                       </span>
                     </div>
+                    {v.lastEditedByName && (
+                      <div style={{ marginTop: 6, fontSize: 9.5, color: "var(--bc-text-faint)", fontFamily: "var(--font-jbmono)" }}>
+                        modifié par {v.lastEditedByName}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -153,6 +235,8 @@ export function KanbanBoard({ initialVideos }: { initialVideos: KanbanVideo[] })
           );
         })}
       </div>
+
+      {modalOpen && <PipelineVideoModal target={editTarget} clients={clients} editors={editors} onClose={closeModal} />}
     </div>
   );
 }

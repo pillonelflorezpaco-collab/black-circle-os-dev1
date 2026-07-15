@@ -118,6 +118,7 @@ model User {
   accounts             Account[]
   sessions             Session[]
   assignedVideos       Video[]            @relation("VideoAssignedEditor")
+  lastEditedVideos     Video[]            @relation("VideoLastEditedBy")
   activityLogEntries   ActivityLogEntry[] @relation("ActivityActor")
   generatedReports     Report[]           @relation("ReportGeneratedBy")
 
@@ -240,6 +241,8 @@ model Video {
   caption          String?    @db.Text
   assignedEditorId String?
   assignedEditor   User?      @relation("VideoAssignedEditor", fields: [assignedEditorId], references: [id])
+  lastEditedById   String?
+  lastEditedBy     User?      @relation("VideoLastEditedBy", fields: [lastEditedById], references: [id])
   stageUpdatedAt   DateTime   @default(now())
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt

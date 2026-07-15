@@ -4,7 +4,11 @@ import type { Prisma, VideoStage } from "@prisma/client";
 export const videoRepository = {
   findAllGroupedByStage() {
     return prisma.video.findMany({
-      include: { client: { select: { id: true, name: true } }, assignedEditor: { select: { id: true, name: true } } },
+      include: {
+        client: { select: { id: true, name: true } },
+        assignedEditor: { select: { id: true, name: true } },
+        lastEditedBy: { select: { id: true, name: true } },
+      },
       orderBy: { updatedAt: "desc" },
     });
   },

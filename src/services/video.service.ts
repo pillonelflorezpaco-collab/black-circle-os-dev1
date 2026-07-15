@@ -1,9 +1,10 @@
-import type { VideoStage } from "@prisma/client";
+import type { Role, VideoStage } from "@prisma/client";
 import { videoRepository } from "@/repositories/video.repository";
 import { activityRepository } from "@/repositories/activity.repository";
 import { integrationRepository } from "@/repositories/integration.repository";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { createCalendarEvent } from "@/lib/googleCalendar";
+import { assertCan } from "@/lib/permissions";
 
 export const STAGE_LABELS: Record<VideoStage, string> = {
   RAW: "Raw",
@@ -16,7 +17,11 @@ export const STAGE_LABELS: Record<VideoStage, string> = {
 };
 
 export async function updateVideoStage(videoId: string, stage: VideoStage, actorId?: string) {
-  const video = await videoRepository.update(videoId, { stage, stageUpdatedAt: new Date() });
+  const video = await videoRepository.update(videoId, {
+    stage,
+    stageUpdatedAt: new Date(),
+    ...(actorId ? { lastEditedBy: { connect: { id: actorId } } } : {}),
+  });
   const withClient = await videoRepository.findById(videoId);
   const clientName = withClient?.client?.name ?? "Client inconnu";
 
@@ -80,4 +85,43 @@ export async function getClientStageCounts(clientId: string) {
   const counts = Object.fromEntries(Object.keys(STAGE_LABELS).map((s) => [s, 0])) as Record<VideoStage, number>;
   for (const g of grouped) counts[g.stage] = g._count;
   return counts;
+}
+
+export type VideoDetailsInput = {
+  title: string;
+  clientId: string;
+  driveUrl?: string | null;
+  caption?: string | null;
+  assignedEditorId?: string | null;
+  stage?: VideoStage;
+};
+
+export async function createVideo(input: VideoDetailsInput, actorRole: Role, actorId?: string) {
+  assertCan(actorRole, "editerPipeline");
+  return videoRepository.create({
+    title: input.title,
+    client: { connect: { id: input.clientId } },
+    driveUrl: input.driveUrl || null,
+    caption: input.caption || null,
+    stage: input.stage ?? "RAW",
+    ...(input.assignedEditorId ? { assignedEditor: { connect: { id: input.assignedEditorId } } } : {}),
+    ...(actorId ? { lastEditedBy: { connect: { id: actorId } } } : {}),
+  });
+}
+
+export async function updateVideoDetails(videoId: string, input: VideoDetailsInput, actorRole: Role, actorId?: string) {
+  assertCan(actorRole, "editerPipeline");
+  return videoRepository.update(videoId, {
+    title: input.title,
+    client: { connect: { id: input.clientId } },
+    driveUrl: input.driveUrl || null,
+    caption: input.caption || null,
+    assignedEditor: input.assignedEditorId ? { connect: { id: input.assignedEditorId } } : { disconnect: true },
+    ...(actorId ? { lastEditedBy: { connect: { id: actorId } } } : {}),
+  });
+}
+
+export async function deleteVideoEntry(videoId: string, actorRole: Role) {
+  assertCan(actorRole, "editerPipeline");
+  return videoRepository.delete(videoId);
 }
