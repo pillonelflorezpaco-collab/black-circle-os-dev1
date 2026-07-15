@@ -244,6 +244,60 @@ body.bc-app {
   .bc-grid2b { grid-template-columns: 1fr; }
 }
 
+/* ---- Mobile: off-canvas sidebar + hamburger ---- */
+.bc-mobile-topbar { display: none; }
+.bc-sidebar-backdrop { display: none; }
+
+@media (max-width: 768px) {
+  .bc-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 70;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  }
+  .bc-sidebar.open { transform: translateX(0); }
+
+  .bc-sidebar-backdrop.open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 60;
+  }
+
+  .bc-mobile-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .bc-mobile-topbar button {
+    background: var(--bc-surface);
+    border: 1px solid var(--bc-border);
+    color: var(--bc-text);
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .bc-main { padding: 18px 16px 50px; }
+
+  .bc-hero-glow { padding: 22px 18px 18px; }
+  .bc-hero-split { flex-direction: column; gap: 22px; }
+  .bc-stat-badges { min-width: 0; width: 100%; grid-template-columns: repeat(2, 1fr); }
+
+  .bc-form-grid { grid-template-columns: 1fr; }
+}
+
 .bc-mini-card { background: var(--bc-surface); border: 1px solid var(--bc-border); border-radius: 14px; padding: 16px; }
 .bc-mini-card .lab { font-family: var(--font-jbmono), monospace; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--bc-text-faint); margin-bottom: 9px; }
 .bc-mini-card .val { font-family: var(--font-jbmono), monospace; font-size: 22px; font-variant-numeric: tabular-nums; color: var(--bc-text); }
