@@ -2,8 +2,9 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma, VideoStage } from "@prisma/client";
 
 export const videoRepository = {
-  findAllGroupedByStage() {
+  findAllGroupedByStage(clientId?: string | null) {
     return prisma.video.findMany({
+      where: clientId ? { clientId } : undefined,
       include: {
         client: { select: { id: true, name: true } },
         assignedEditor: { select: { id: true, name: true } },

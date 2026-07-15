@@ -33,11 +33,13 @@ export function KanbanBoard({
   clients,
   editors,
   canEdit,
+  defaultClientId,
 }: {
   initialVideos: KanbanVideo[];
   clients: { id: string; name: string }[];
   editors: { id: string; name: string }[];
   canEdit: boolean;
+  defaultClientId?: string | null;
 }) {
   const [videos, setVideos] = useState(initialVideos);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -236,7 +238,15 @@ export function KanbanBoard({
         })}
       </div>
 
-      {modalOpen && <PipelineVideoModal target={editTarget} clients={clients} editors={editors} onClose={closeModal} />}
+      {modalOpen && (
+        <PipelineVideoModal
+          target={editTarget}
+          clients={clients}
+          editors={editors}
+          defaultClientId={defaultClientId}
+          onClose={closeModal}
+        />
+      )}
     </div>
   );
 }

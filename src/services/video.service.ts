@@ -76,8 +76,8 @@ async function notifyReviewNeeded(videoId: string, title: string, clientName: st
   }
 }
 
-export async function listPipelineVideos() {
-  return videoRepository.findAllGroupedByStage();
+export async function listPipelineVideos(clientId?: string | null) {
+  return videoRepository.findAllGroupedByStage(clientId);
 }
 
 export async function getClientStageCounts(clientId: string) {

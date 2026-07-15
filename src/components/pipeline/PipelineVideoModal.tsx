@@ -27,11 +27,13 @@ export function PipelineVideoModal({
   target,
   clients,
   editors,
+  defaultClientId,
   onClose,
 }: {
   target: PipelineVideoEditTarget; // null = create mode
   clients: { id: string; name: string }[];
   editors: { id: string; name: string }[];
+  defaultClientId?: string | null;
   onClose: () => void;
 }) {
   const isEdit = !!target;
@@ -84,7 +86,7 @@ export function PipelineVideoModal({
           </div>
           <div>
             <label>Client</label>
-            <select name="clientId" required defaultValue={target?.clientId ?? clients[0]?.id ?? ""}>
+            <select name="clientId" required defaultValue={target?.clientId ?? defaultClientId ?? clients[0]?.id ?? ""}>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
