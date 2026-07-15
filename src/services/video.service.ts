@@ -5,7 +5,7 @@ import { integrationRepository } from "@/repositories/integration.repository";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { createCalendarEvent } from "@/lib/googleCalendar";
 
-const STAGE_LABELS: Record<VideoStage, string> = {
+export const STAGE_LABELS: Record<VideoStage, string> = {
   RAW: "Raw",
   A_EDITER: "À éditer",
   EN_EDITION: "En édition",
@@ -73,4 +73,11 @@ async function notifyReviewNeeded(videoId: string, title: string, clientName: st
 
 export async function listPipelineVideos() {
   return videoRepository.findAllGroupedByStage();
+}
+
+export async function getClientStageCounts(clientId: string) {
+  const grouped = await videoRepository.countByClientAndStage(clientId);
+  const counts = Object.fromEntries(Object.keys(STAGE_LABELS).map((s) => [s, 0])) as Record<VideoStage, number>;
+  for (const g of grouped) counts[g.stage] = g._count;
+  return counts;
 }

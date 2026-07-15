@@ -193,6 +193,7 @@ model Client {
   team             Team?           @relation("ClientAssignedTeam", fields: [teamId], references: [id])
   blotatoAccountId String?
   blotatoAccount   BlotatoAccount? @relation(fields: [blotatoAccountId], references: [id])
+  accessCode       String?         @unique // client-portal login code (read-only self-service access)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 

@@ -1,25 +1,15 @@
 "use client";
 
-import { Suspense, useActionState } from "react";
-import { useSearchParams } from "next/navigation";
-import { authenticate } from "./actions";
+import { useActionState } from "react";
+import { authenticatePortal } from "./actions";
 
-export default function LoginPage() {
-  return (
-    <Suspense fallback={null}>
-      <LoginForm />
-    </Suspense>
-  );
-}
-
-function LoginForm() {
-  const params = useSearchParams();
-  const from = params.get("from") || "/";
-  const [error, formAction, pending] = useActionState(authenticate, undefined);
+export default function PortailLoginPage() {
+  const [error, formAction, pending] = useActionState(authenticatePortal, undefined);
 
   return (
     <div
       style={{
+        marginTop: "18vh",
         width: 380,
         background: "var(--bc-surface)",
         border: "1px solid var(--bc-border)",
@@ -36,19 +26,20 @@ function LoginForm() {
           <div className="bc-logo-word">
             Black Circle <b>OS</b>
           </div>
-          <div className="bc-logo-sub">Control Center</div>
+          <div className="bc-logo-sub">Espace client</div>
         </div>
       </div>
 
       <form action={formAction} className="bc-form-grid">
-        <input type="hidden" name="from" value={from} />
         <div className="full">
-          <label>Email</label>
-          <input name="email" type="email" required autoComplete="email" placeholder="prenom@blackcircle.agency" />
-        </div>
-        <div className="full">
-          <label>Mot de passe</label>
-          <input name="password" type="password" required autoComplete="current-password" />
+          <label>Code d&apos;accès</label>
+          <input
+            name="code"
+            required
+            autoComplete="off"
+            placeholder="ex: A1B2C3D4"
+            style={{ textTransform: "uppercase", letterSpacing: 2 }}
+          />
         </div>
         {error && (
           <div className="full" style={{ color: "var(--bc-red)", fontSize: 12.5 }}>
@@ -72,7 +63,7 @@ function LoginForm() {
               opacity: pending ? 0.7 : 1,
             }}
           >
-            {pending ? "Connexion…" : "Se connecter"}
+            {pending ? "Connexion…" : "Accéder à mon espace"}
           </button>
         </div>
       </form>

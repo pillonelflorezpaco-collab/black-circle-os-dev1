@@ -1,10 +1,14 @@
 import { listClientsForGrid } from "@/services/client.service";
+import { auth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
+import AccessCodeControl from "./AccessCodeControl";
 
 const STATUS_LABEL: Record<string, string> = { OK: "Sain", WARN: "Attention", CRIT: "Critique" };
 const STATUS_CLASS: Record<string, string> = { OK: "ok", WARN: "warn", CRIT: "crit" };
 
 export default async function ClientsPage() {
-  const clients = await listClientsForGrid();
+  const [clients, session] = await Promise.all([listClientsForGrid(), auth()]);
+  const canManage = !!session?.user && can(session.user.role, "gererEquipe");
 
   return (
     <>
@@ -53,6 +57,7 @@ export default async function ClientsPage() {
               <span className={`bc-cc-status ${STATUS_CLASS[c.status]}`}>{STATUS_LABEL[c.status]}</span>
               <span style={{ fontFamily: "var(--font-jbmono)", fontSize: 10, color: "var(--bc-text-faint)" }}>Voir →</span>
             </div>
+            {canManage && <AccessCodeControl clientId={c.id} accessCode={c.accessCode} />}
           </div>
         ))}
       </div>

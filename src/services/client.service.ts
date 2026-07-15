@@ -25,6 +25,7 @@ export async function listClientsForGrid() {
       videoCount: c.videos.length,
       daysRemaining: days,
       status,
+      accessCode: c.accessCode,
     };
   });
 }

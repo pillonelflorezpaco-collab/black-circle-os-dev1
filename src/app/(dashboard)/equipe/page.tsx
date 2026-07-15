@@ -1,13 +1,20 @@
 import { listTeamMembers } from "@/services/team.service";
+import { auth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
+import TeamMemberForm from "./TeamMemberForm";
+import TeamMemberActions from "./TeamMemberActions";
 
 export default async function EquipePage() {
-  const team = await listTeamMembers();
+  const [team, session] = await Promise.all([listTeamMembers(), auth()]);
+  const canManage = !!session?.user && can(session.user.role, "gererEquipe");
 
   return (
     <>
       <div className="bc-topbar">
         <h2>Équipe</h2>
       </div>
+
+      {canManage && <TeamMemberForm />}
 
       <div className="bc-grid4" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
         {team.map((t) => {
@@ -18,7 +25,7 @@ export default async function EquipePage() {
                 <div className="bc-tc-avatar">{t.initials}</div>
                 <div>
                   <div className="bc-tc-name">{t.name}</div>
-                  <div className="bc-tc-role">{t.role}</div>
+                  <div className="bc-tc-role">{t.roleLabel}</div>
                 </div>
               </div>
               <div className="bc-tc-row">
@@ -35,6 +42,11 @@ export default async function EquipePage() {
                 </div>
               </div>
               <div className="bc-tc-row">Actif {new Date(t.updatedAt).toLocaleDateString("fr-FR")}</div>
+              {canManage && (
+                <div className="bc-tc-row" style={{ borderTop: "1px solid var(--bc-border)", paddingTop: 10, marginTop: 2 }}>
+                  <TeamMemberActions userId={t.id} role={t.role} />
+                </div>
+              )}
             </div>
           );
         })}

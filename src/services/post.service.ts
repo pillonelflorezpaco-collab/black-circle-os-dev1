@@ -29,3 +29,15 @@ export async function getCalendarMonth(year: number, month: number, clientId?: s
 
   return byDay;
 }
+
+export async function listClientPosts(clientId: string) {
+  const posts = await postRepository.findMany({ video: { clientId } });
+  return posts.map((p) => ({
+    id: p.id,
+    videoTitle: p.video.title,
+    platform: p.platform,
+    status: p.status,
+    scheduledTime: p.scheduledTime,
+    publicUrl: p.publicUrl,
+  }));
+}
