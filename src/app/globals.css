@@ -222,9 +222,9 @@ body.bc-app {
 .bc-hero-glow .mini-chart-wrap { position: relative; height: 140px; z-index: 1; }
 
 .bc-time-toggle { display: flex; gap: 4px; background: rgba(255, 255, 255, 0.05); padding: 3px; border-radius: 9px; }
-.bc-time-toggle button { background: none; border: none; color: #9c99a0; font-family: var(--font-jbmono), monospace; font-size: 11px; padding: 6px 12px; border-radius: 7px; cursor: pointer; transition: 0.15s; }
-.bc-time-toggle button:hover { color: #f2efe8; }
-.bc-time-toggle button.active { background: rgba(232, 179, 104, 0.16); color: var(--bc-amber); }
+.bc-time-toggle button, .bc-time-toggle a { background: none; border: none; color: #9c99a0; font-family: var(--font-jbmono), monospace; font-size: 11px; padding: 6px 12px; border-radius: 7px; cursor: pointer; transition: 0.15s; text-decoration: none; display: inline-block; }
+.bc-time-toggle button:hover, .bc-time-toggle a:hover { color: #f2efe8; }
+.bc-time-toggle button.active, .bc-time-toggle a.active { background: rgba(232, 179, 104, 0.16); color: var(--bc-amber); }
 
 .bc-hero-split { display: flex; align-items: flex-start; gap: 36px; position: relative; margin-bottom: 26px; flex-wrap: wrap; }
 .bc-stat-badges { flex: 1; min-width: 280px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 26px; }

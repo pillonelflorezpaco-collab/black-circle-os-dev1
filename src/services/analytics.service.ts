@@ -85,6 +85,40 @@ export async function getPlatformBreakdown(clientId?: string | null) {
     .sort((a, b) => b.count - a.count);
 }
 
+/**
+ * Total views per social account, using the latest snapshot per post (the
+ * snapshot table is append-only, so summing every row would double-count).
+ * Sorted descending — the simple "who's performing" view clients ask about.
+ */
+export async function getViewsByAccount(clientId?: string | null, limit = 6) {
+  const snapshots = await prisma.postMetricSnapshot.findMany({
+    where: clientId ? { post: { video: { clientId } } } : undefined,
+    include: { post: { include: { socialAccount: { include: { client: true } } } } },
+    orderBy: { checkedAt: "desc" },
+  });
+
+  const latestByPost = new Map<string, (typeof snapshots)[number]>();
+  for (const s of snapshots) {
+    if (!latestByPost.has(s.postId)) latestByPost.set(s.postId, s);
+  }
+
+  const byAccount = new Map<string, { accountId: string; platform: string; label: string; views: number }>();
+  for (const s of latestByPost.values()) {
+    const acc = s.post.socialAccount;
+    const existing = byAccount.get(acc.id);
+    const label = acc.displayName || acc.client.name;
+    if (existing) {
+      existing.views += s.views;
+    } else {
+      byAccount.set(acc.id, { accountId: acc.id, platform: acc.platform, label, views: s.views });
+    }
+  }
+
+  return Array.from(byAccount.values())
+    .sort((a, b) => b.views - a.views)
+    .slice(0, limit);
+}
+
 /** Daily view totals for the trend chart, real data (falls back to a flat zero series with no posts yet). */
 export async function getDailyViewSeries(days: number, clientId?: string | null) {
   const since = new Date(Date.now() - days * 86_400_000);

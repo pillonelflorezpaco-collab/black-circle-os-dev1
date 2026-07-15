@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { getDashboardData } from "@/services/dashboard.service";
+import { getViewsByAccount } from "@/services/analytics.service";
+import { PLATFORM_COLOR } from "@/services/post.service";
 import { Sparkline } from "@/components/dashboard/Sparkline";
 import { RingGauge } from "@/components/shared/RingGauge";
 import { getSelectedClientId } from "@/app/actions";
 import { prisma } from "@/lib/prisma";
+import { formatCompactNumber } from "@/lib/utils";
 import type { Period } from "@/lib/dates";
 
 const PERIOD_LABELS: Record<Period, string> = {
@@ -34,7 +37,11 @@ export default async function DashboardPage({
     ? await prisma.client.findUnique({ where: { id: selectedClientId }, select: { name: true } })
     : null;
 
-  const data = await getDashboardData(period, selectedClientId);
+  const [data, viewsByAccount] = await Promise.all([
+    getDashboardData(period, selectedClientId),
+    getViewsByAccount(selectedClientId),
+  ]);
+  const maxViews = viewsByAccount.length > 0 ? viewsByAccount[0].views : 0;
 
   return (
     <>
@@ -196,6 +203,43 @@ export default async function DashboardPage({
             <RingGauge key={c.id} value={c.days} target={14} label={c.name} />
           ))}
         </div>
+      </div>
+
+      <div className="bc-section-title">
+        <div className="st-left">
+          <span className="eyebrow">Performance</span>Vues par compte
+        </div>
+      </div>
+      <div className="bc-card">
+        {viewsByAccount.length === 0 ? (
+          <p style={{ color: "var(--bc-text-faint)", fontStyle: "italic" }}>Pas encore de données de vues.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {viewsByAccount.map((a) => {
+              const color = PLATFORM_COLOR[a.platform] ?? "#8C8A85";
+              const pct = maxViews > 0 ? Math.max(4, Math.round((a.views / maxViews) * 100)) : 0;
+              return (
+                <div key={a.accountId}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 7 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 4, background: color, flexShrink: 0 }} />
+                      {a.label}
+                      <span style={{ fontFamily: "var(--font-jbmono)", fontSize: 9.5, color: "var(--bc-text-faint)", textTransform: "uppercase" }}>
+                        {a.platform}
+                      </span>
+                    </span>
+                    <span style={{ fontFamily: "var(--font-jbmono)", fontSize: 13, color: "var(--bc-text)" }}>
+                      {formatCompactNumber(a.views)} <span style={{ color: "var(--bc-text-faint)", fontSize: 10 }}>vues</span>
+                    </span>
+                  </div>
+                  <div className="bc-tc-bar-track">
+                    <div className="bc-tc-bar-fill" style={{ width: `${pct}%`, background: color }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </>
   );

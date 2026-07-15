@@ -1,6 +1,6 @@
 import { postRepository } from "@/repositories/post.repository";
 
-const PLATFORM_COLOR: Record<string, string> = {
+export const PLATFORM_COLOR: Record<string, string> = {
   INSTAGRAM: "#C68F5A",
   TIKTOK: "#7FA3C4",
   YOUTUBE: "#C1604A",
