@@ -49,3 +49,17 @@ export function percentDelta(current: number, previous: number): number {
   if (previous === 0) return current > 0 ? 100 : 0;
   return Math.round(((current - previous) / previous) * 100);
 }
+
+/**
+ * Renders a "+X% vs période précédente" label. When the previous period had
+ * zero to compare against, a literal percentage is meaningless (going from 0
+ * to 1 is not "+100%" any more than going from 0 to 1000 is) — say so
+ * explicitly instead of printing a flat, misleading "+100%".
+ */
+export function formatDeltaLabel(current: number, previous: number): string {
+  if (previous === 0) {
+    return current > 0 ? "Nouveau — pas de donnée période préc." : "Pas de donnée période préc.";
+  }
+  const delta = percentDelta(current, previous);
+  return `${delta >= 0 ? "+" : ""}${delta}% vs période préc.`;
+}

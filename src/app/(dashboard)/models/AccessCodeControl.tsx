@@ -3,14 +3,14 @@
 import { useState, useTransition } from "react";
 import { regenerateAccessCode } from "./actions";
 
-export default function AccessCodeControl({ clientId, accessCode }: { clientId: string; accessCode: string | null }) {
+export default function AccessCodeControl({ modelId, accessCode }: { modelId: string; accessCode: string | null }) {
   const [code, setCode] = useState(accessCode);
   const [isPending, startTransition] = useTransition();
   const [copied, setCopied] = useState(false);
 
   function handleRegenerate() {
     startTransition(async () => {
-      const newCode = await regenerateAccessCode(clientId);
+      const newCode = await regenerateAccessCode(modelId);
       setCode(newCode);
       setCopied(false);
     });

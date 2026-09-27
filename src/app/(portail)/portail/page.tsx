@@ -1,9 +1,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifyClientSession } from "@/lib/clientSession";
+import { verifyModelSession } from "@/lib/modelSession";
 import { prisma } from "@/lib/prisma";
-import { getClientStageCounts, STAGE_LABELS } from "@/services/video.service";
-import { listClientPosts } from "@/services/post.service";
+import { getModelStageCounts, STAGE_LABELS } from "@/services/video.service";
+import { listModelPosts } from "@/services/post.service";
 import { logoutPortal } from "./actions";
 
 const POST_STATUS_LABEL: Record<string, string> = {
@@ -24,18 +24,18 @@ const POST_STATUS_CLASS: Record<string, string> = {
 
 export default async function PortailDashboardPage() {
   const store = await cookies();
-  const clientId = await verifyClientSession(store.get("bc_portal_session")?.value);
-  if (!clientId) redirect("/portail/login");
+  const modelId = await verifyModelSession(store.get("bc_portal_session")?.value);
+  if (!modelId) redirect("/portail/login");
 
-  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
-  if (!client) redirect("/portail/login");
+  const model = await prisma.model.findUnique({ where: { id: modelId }, select: { name: true } });
+  if (!model) redirect("/portail/login");
 
-  const [stageCounts, posts] = await Promise.all([getClientStageCounts(clientId), listClientPosts(clientId)]);
+  const [stageCounts, posts] = await Promise.all([getModelStageCounts(modelId), listModelPosts(modelId)]);
 
   return (
     <div style={{ width: "100%", maxWidth: 880, padding: "34px 20px" }}>
       <div className="bc-topbar" style={{ marginBottom: 20 }}>
-        <h2>{client.name}</h2>
+        <h2>{model.name}</h2>
         <form action={logoutPortal}>
           <button
             type="submit"

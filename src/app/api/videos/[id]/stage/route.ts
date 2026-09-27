@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { updateVideoStage } from "@/services/video.service";
 import { auth } from "@/lib/auth";
-import { assertCan, ForbiddenError } from "@/lib/permissions";
+import { assertCan, assertSameAgency, ForbiddenError } from "@/lib/permissions";
+import { getEffectiveAgencyId } from "@/lib/agencyContext";
+import { videoRepository } from "@/repositories/video.repository";
 
 const bodySchema = z.object({
   stage: z.enum(["RAW", "A_EDITER", "EN_EDITION", "PRET_POUR_REVIEW", "VALIDE", "PROGRAMME", "PUBLIE"]),
@@ -22,6 +24,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     assertCan(session.user.role, "editerPipeline");
+    const existing = await videoRepository.findById(id);
+    assertSameAgency(await getEffectiveAgencyId(), existing?.agencyId);
     const video = await updateVideoStage(id, parsed.data.stage, session.user.id);
     return NextResponse.json({ video });
   } catch (err) {

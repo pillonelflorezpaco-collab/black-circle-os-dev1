@@ -2,10 +2,10 @@ import { prisma } from "@/lib/prisma";
 import type { ActivityEventType, ActivitySeverity, Prisma } from "@prisma/client";
 
 export const activityRepository = {
-  findRecent(limit = 20, clientId?: string | null) {
+  findRecent(limit = 20, agencyId: string | null, modelId?: string | null) {
     return prisma.activityLogEntry.findMany({
-      where: clientId ? { clientId } : undefined,
-      include: { client: { select: { id: true, name: true } }, actor: { select: { id: true, name: true } } },
+      where: { ...(agencyId ? { agencyId } : {}), ...(modelId ? { modelId } : {}) },
+      include: { model: { select: { id: true, name: true } }, actor: { select: { id: true, name: true } } },
       orderBy: { createdAt: "desc" },
       take: limit,
     });
@@ -15,8 +15,9 @@ export const activityRepository = {
     eventType: ActivityEventType;
     message: string;
     severity?: ActivitySeverity;
-    clientId?: string;
+    modelId?: string;
     actorId?: string;
+    agencyId: string;
     metadata?: Prisma.InputJsonValue;
   }) {
     return prisma.activityLogEntry.create({ data: entry });

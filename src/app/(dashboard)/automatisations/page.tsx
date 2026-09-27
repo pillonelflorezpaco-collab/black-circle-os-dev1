@@ -1,4 +1,5 @@
 import { listIntegrations } from "@/services/integration.service";
+import { getEffectiveAgencyId } from "@/lib/agencyContext";
 
 const ICONS: Record<string, string> = {
   drive: '<path d="M4.5 2h5l3.5 6-1.75 3H3.25L1.5 8Z"/>',
@@ -17,7 +18,8 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function AutomatisationsPage() {
-  const integrations = await listIntegrations();
+  const agencyId = await getEffectiveAgencyId();
+  const integrations = agencyId ? await listIntegrations(agencyId) : [];
 
   return (
     <>

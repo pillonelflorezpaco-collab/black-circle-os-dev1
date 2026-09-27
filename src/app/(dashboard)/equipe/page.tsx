@@ -1,11 +1,13 @@
 import { listTeamMembers } from "@/services/team.service";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
+import { getEffectiveAgencyId } from "@/lib/agencyContext";
 import TeamMemberForm from "./TeamMemberForm";
 import TeamMemberActions from "./TeamMemberActions";
 
 export default async function EquipePage() {
-  const [team, session] = await Promise.all([listTeamMembers(), auth()]);
+  const agencyId = await getEffectiveAgencyId();
+  const [team, session] = await Promise.all([listTeamMembers(agencyId), auth()]);
   const canManage = !!session?.user && can(session.user.role, "gererEquipe");
 
   return (

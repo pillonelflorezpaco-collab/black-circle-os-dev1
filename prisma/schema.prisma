@@ -11,11 +11,21 @@ datasource db {
 // ─────────────────────────────────────────────────────────────
 
 enum Role {
-  ADMIN
-  MANAGER
+  SUPER_ADMIN
+  OWNER
+  AGENCY_MANAGER
+  CLOSER
+  SALES
+  CHATTER_MANAGER
+  CHATTER
+  CONTENT_MANAGER
+  EDITOR
+  VIDEO_EDITOR
   ASSISTANT
-  MONTEUR
-  VIEWER
+  MODEL_ROLE
+  FINANCE
+  DEVELOPER
+  VIEWER // legacy value, unused by any seeded/live row as of the 2026-07-23 migration; kept rather than dropped (Postgres has no cheap DROP VALUE) — do not assign to new users, not part of the MVP role set
 }
 
 enum Platform {
@@ -48,7 +58,7 @@ enum PostStatus {
   FAILED
 }
 
-enum ClientStatus {
+enum ModelStatus {
   OK
   WARN
   CRIT
@@ -62,6 +72,7 @@ enum IntegrationType {
   TELEGRAM
   GOOGLE_SHEETS
   CUSTOM_API
+  SOCIAL_ENGINE_NATIVE
 }
 
 enum IntegrationStatus {
@@ -81,11 +92,22 @@ enum ActivityEventType {
   POST_SCHEDULED
   POST_PUBLISHED
   POST_FAILED
-  CLIENT_CREATED
-  CLIENT_CONTENT_LOW
+  MODEL_CREATED
+  MODEL_CONTENT_LOW
   TEAM_MEMBER_ASSIGNED
   INTEGRATION_ERROR
   REPORT_GENERATED
+  PLATFORM_CONNECTED
+  PLATFORM_DISCONNECTED
+  PLATFORM_TOKEN_EXPIRED
+}
+
+// Which system actually delivers a Model's posts for a given platform —
+// lets Blotato and native adapters run side by side during the Social
+// Engine migration (see src/engines/social/adapters/platformAdapter.ts).
+enum SocialAccountSource {
+  BLOTATO
+  NATIVE
 }
 
 enum ReportFormat {
@@ -99,6 +121,39 @@ enum ReportStatus {
   FAILED
 }
 
+enum AgencyStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+// ─────────────────────────────────────────────────────────────
+// AGENCIES (multi-tenant boundary)
+// ─────────────────────────────────────────────────────────────
+
+model Agency {
+  id        String       @id @default(cuid())
+  name      String
+  slug      String       @unique
+  status    AgencyStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  teams               Team[]
+  users               User[]
+  models              Model[]
+  videos              Video[]
+  posts               Post[]
+  activityLogEntries  ActivityLogEntry[]
+  reports             Report[]
+  integrations        Integration[]
+  blotatoAccounts     BlotatoAccount[]
+  platformConnections PlatformConnection[]
+  mediaAssets         MediaAsset[]
+  engineApiKeys       EngineApiKey[]
+
+  @@index([slug])
+}
+
 // ─────────────────────────────────────────────────────────────
 // AUTH / TEAM
 // ─────────────────────────────────────────────────────────────
@@ -108,21 +163,25 @@ model User {
   email        String   @unique
   name         String
   passwordHash String?
-  role         Role     @default(VIEWER)
+  role         Role     @default(ASSISTANT)
   avatarUrl    String?
   teamId       String?
   team         Team?    @relation(fields: [teamId], references: [id])
+  agencyId     String? // NULL only for SUPER_ADMIN, who is not scoped to a single agency
+  agency       Agency?  @relation(fields: [agencyId], references: [id])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  accounts             Account[]
-  sessions             Session[]
-  assignedVideos       Video[]            @relation("VideoAssignedEditor")
-  lastEditedVideos     Video[]            @relation("VideoLastEditedBy")
-  activityLogEntries   ActivityLogEntry[] @relation("ActivityActor")
-  generatedReports     Report[]           @relation("ReportGeneratedBy")
+  accounts           Account[]
+  sessions           Session[]
+  assignedVideos     Video[]            @relation("VideoAssignedEditor")
+  lastEditedVideos   Video[]            @relation("VideoLastEditedBy")
+  activityLogEntries ActivityLogEntry[] @relation("ActivityActor")
+  generatedReports   Report[]           @relation("ReportGeneratedBy")
+  modelAssignments   ModelAssignment[]
 
   @@index([teamId])
+  @@index([agencyId])
 }
 
 // Standard NextAuth (Auth.js) Prisma adapter models
@@ -163,14 +222,18 @@ model VerificationToken {
 model Team {
   id        String   @id @default(cuid())
   name      String
+  agencyId  String
+  agency    Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
   members User[]
-  clients Client[] @relation("ClientAssignedTeam")
+  models  Model[] @relation("ModelAssignedTeam")
+
+  @@index([agencyId])
 }
 
 // ─────────────────────────────────────────────────────────────
-// CLIENTS & BLOTATO ACCOUNTS
+// MODELS & BLOTATO ACCOUNTS
 // ─────────────────────────────────────────────────────────────
 
 model BlotatoAccount {
@@ -178,51 +241,165 @@ model BlotatoAccount {
   label     String
   apiKey    String // encrypted at rest (lib/crypto.ts), sent as `blotato-api-key` header
   capLimit  Int      @default(200) // ~200 concurrently-scheduled posts cap (real Blotato constraint)
+  agencyId  String
+  agency    Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  clients        Client[]
+  models         Model[]
   socialAccounts SocialAccount[]
+
+  @@index([agencyId])
 }
 
-model Client {
+model Model {
   id               String          @id @default(cuid())
   name             String
   logoUrl          String?
-  status           ClientStatus    @default(OK)
+  notes            String?         @db.Text
+  status           ModelStatus     @default(OK)
   teamId           String?
-  team             Team?           @relation("ClientAssignedTeam", fields: [teamId], references: [id])
+  team             Team?           @relation("ModelAssignedTeam", fields: [teamId], references: [id])
   blotatoAccountId String?
   blotatoAccount   BlotatoAccount? @relation(fields: [blotatoAccountId], references: [id])
-  accessCode       String?         @unique // client-portal login code (read-only self-service access)
+  accessCode       String?         @unique // model-portal login code (read-only self-service access)
+  agencyId         String
+  agency           Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
-  socialAccounts     SocialAccount[]
-  videos             Video[]
-  activityLogEntries ActivityLogEntry[]
+  socialAccounts      SocialAccount[]
+  videos              Video[]
+  activityLogEntries  ActivityLogEntry[]
+  links               ModelLink[]
+  assignments         ModelAssignment[]
+  platformConnections PlatformConnection[]
 
   @@index([blotatoAccountId])
   @@index([teamId])
+  @@index([agencyId])
 }
 
-// A client's connection to one platform, routed through a shared BlotatoAccount
+// Freeform links shown in the Model detail view (Notion-style) — a small
+// child table rather than a JSON blob so individual rows can be added/removed
+// independently without a read-modify-write race.
+model ModelLink {
+  id        String   @id @default(cuid())
+  modelId   String
+  model     Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  label     String
+  url       String
+  createdAt DateTime @default(now())
+
+  @@index([modelId])
+}
+
+// "Who works on this Model" — deliberately no separate function-role field:
+// the assigned User's own Role (Editor, Assistant, etc.) is what's displayed.
+model ModelAssignment {
+  id        String   @id @default(cuid())
+  modelId   String
+  model     Model    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([modelId, userId])
+  @@index([modelId])
+}
+
+// A model's connection to one platform — either routed through a shared
+// BlotatoAccount (legacy) or a native PlatformConnection (Social Engine).
+// `source` says which one is authoritative; app-layer invariant (enforced in
+// src/engines/social/services/socialConnection.service.ts, not a DB
+// constraint): exactly one of blotatoAccountId/platformConnectionId is set,
+// matching `source`. The @@unique([modelId, platform]) below is what actually
+// prevents a Model from double-posting to the same platform during migration.
 model SocialAccount {
-  id                String         @id @default(cuid())
-  clientId          String
-  client            Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  blotatoAccountId  String
-  blotatoAccount    BlotatoAccount @relation(fields: [blotatoAccountId], references: [id])
-  platform          Platform
-  blotatoAccountRef String // Blotato's own per-platform accountId (target.accountId)
-  displayName       String?
-  isActive          Boolean        @default(true)
-  createdAt         DateTime       @default(now())
+  id                   String              @id @default(cuid())
+  modelId              String
+  model                Model               @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  source               SocialAccountSource @default(BLOTATO)
+  blotatoAccountId     String?
+  blotatoAccount       BlotatoAccount?     @relation(fields: [blotatoAccountId], references: [id])
+  platformConnectionId String?             @unique
+  platformConnection   PlatformConnection? @relation(fields: [platformConnectionId], references: [id])
+  platform             Platform
+  blotatoAccountRef    String? // Blotato's own per-platform accountId (target.accountId) — only set when source = BLOTATO
+  displayName          String?
+  isActive             Boolean             @default(true)
+  createdAt            DateTime            @default(now())
 
   posts Post[]
 
-  @@unique([clientId, platform])
+  @@unique([modelId, platform])
   @@index([blotatoAccountId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// SOCIAL ENGINE — native OAuth connections + stored media
+// ─────────────────────────────────────────────────────────────
+
+// A Model's native (non-Blotato) OAuth connection to one platform.
+model PlatformConnection {
+  id                String            @id @default(cuid())
+  modelId           String
+  model             Model             @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  platform          Platform
+  externalAccountId String // the platform's own account/page id
+  accessTokenEnc    String            @db.Text // AES-256-GCM via src/lib/crypto.ts
+  refreshTokenEnc   String?           @db.Text
+  tokenExpiresAt    DateTime?
+  scopes            String[]
+  status            IntegrationStatus @default(CONNECTED)
+  lastError         String?           @db.Text
+  agencyId          String
+  agency            Agency            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  socialAccount SocialAccount?
+
+  @@unique([modelId, platform])
+  @@index([agencyId])
+  @@index([tokenExpiresAt])
+}
+
+// A media file the Social Engine has fetched off Google Drive and staged in
+// object storage (src/lib/storage) — required for native uploads, since
+// several platforms (YouTube in particular) have no "fetch from URL" option.
+model MediaAsset {
+  id          String   @id @default(cuid())
+  videoId     String?
+  video       Video?   @relation(fields: [videoId], references: [id])
+  agencyId    String
+  agency      Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  storageKey  String
+  mimeType    String
+  sizeBytes   Int
+  durationSec Int?
+  checksum    String?
+  createdAt   DateTime @default(now())
+
+  @@index([videoId])
+  @@index([agencyId])
+}
+
+// Bearer keys for engine-to-engine calls (future Agents layer, other
+// Engines) against /api/engine/**. Not used for the dashboard's own
+// session-cookie-authed Server Actions.
+model EngineApiKey {
+  id         String    @id @default(cuid())
+  label      String
+  hashedKey  String    @unique
+  scopes     String[]
+  agencyId   String? // null = cross-agency system key (used sparingly)
+  agency     Agency?   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([agencyId])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -232,8 +409,8 @@ model SocialAccount {
 model Video {
   id               String     @id @default(cuid())
   title            String
-  clientId         String
-  client           Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  modelId          String
+  model            Model      @relation(fields: [modelId], references: [id], onDelete: Cascade)
   stage            VideoStage @default(RAW)
   driveFileId      String?
   driveUrl         String?
@@ -243,14 +420,18 @@ model Video {
   assignedEditor   User?      @relation("VideoAssignedEditor", fields: [assignedEditorId], references: [id])
   lastEditedById   String?
   lastEditedBy     User?      @relation("VideoLastEditedBy", fields: [lastEditedById], references: [id])
+  agencyId         String
+  agency           Agency     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   stageUpdatedAt   DateTime   @default(now())
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
-  posts Post[]
+  posts       Post[]
+  mediaAssets MediaAsset[]
 
-  @@index([clientId, stage])
+  @@index([modelId, stage])
   @@index([assignedEditorId])
+  @@index([agencyId])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -258,12 +439,12 @@ model Video {
 // ─────────────────────────────────────────────────────────────
 
 model Post {
-  id                String        @id @default(cuid())
-  videoId           String
-  video             Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  socialAccountId   String
-  socialAccount     SocialAccount @relation(fields: [socialAccountId], references: [id])
-  platform          Platform
+  id              String        @id @default(cuid())
+  videoId         String
+  video           Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  socialAccountId String
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id])
+  platform        Platform
 
   postSubmissionId String?    @unique
   status           PostStatus @default(PENDING)
@@ -271,6 +452,9 @@ model Post {
   publicUrl        String?
   errorMessage     String?    @db.Text
   requestPayload   Json?
+
+  agencyId String
+  agency   Agency @relation(fields: [agencyId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -280,6 +464,7 @@ model Post {
   @@index([socialAccountId])
   @@index([status, scheduledTime])
   @@index([platform, scheduledTime])
+  @@index([agencyId])
 }
 
 // Append-only time-series, mirrors post-tracker/tracker.db `metrics` table
@@ -309,27 +494,34 @@ model ActivityLogEntry {
   eventType ActivityEventType
   message   String
   severity  ActivitySeverity  @default(OK)
-  clientId  String?
-  client    Client?           @relation(fields: [clientId], references: [id])
+  modelId   String?
+  model     Model?            @relation(fields: [modelId], references: [id])
   actorId   String?
   actor     User?             @relation("ActivityActor", fields: [actorId], references: [id])
+  agencyId  String
+  agency    Agency            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   metadata  Json?
   createdAt DateTime          @default(now())
 
   @@index([createdAt])
-  @@index([clientId, createdAt])
+  @@index([modelId, createdAt])
+  @@index([agencyId])
 }
 
 model Integration {
   id         String            @id @default(cuid())
-  type       IntegrationType   @unique
+  type       IntegrationType
   label      String
   status     IntegrationStatus @default(DISCONNECTED)
   lastSyncAt DateTime?
   lastError  String?           @db.Text
   configJson Json?
+  agencyId   String
+  agency     Agency            @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
+
+  @@unique([agencyId, type])
 }
 
 model Report {
@@ -341,6 +533,8 @@ model Report {
   sizeBytes     Int?
   generatedById String?
   generatedBy   User?        @relation("ReportGeneratedBy", fields: [generatedById], references: [id])
+  agencyId      String
+  agency        Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   paramsJson    Json?
   createdAt     DateTime     @default(now())
   completedAt   DateTime?

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getCalendarMonth } from "@/services/post.service";
-import { getSelectedClientId } from "@/app/actions";
+import { getSelectedModelId } from "@/app/actions";
+import { getEffectiveAgencyId } from "@/lib/agencyContext";
 import { prisma } from "@/lib/prisma";
 
 const DOW = ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"];
@@ -24,12 +25,12 @@ export default async function PublicationsPage({
   const year = Number(params.year) || now.getUTCFullYear();
   const month = Number(params.month) || now.getUTCMonth() + 1;
 
-  const selectedClientId = await getSelectedClientId();
-  const selectedClient = selectedClientId
-    ? await prisma.client.findUnique({ where: { id: selectedClientId }, select: { name: true } })
+  const [selectedModelId, agencyId] = await Promise.all([getSelectedModelId(), getEffectiveAgencyId()]);
+  const selectedModel = selectedModelId
+    ? await prisma.model.findUnique({ where: { id: selectedModelId }, select: { name: true } })
     : null;
 
-  const byDay = await getCalendarMonth(year, month, selectedClientId);
+  const byDay = await getCalendarMonth(year, month, agencyId, selectedModelId);
 
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const firstDow = new Date(Date.UTC(year, month - 1, 1)).getUTCDay(); // 0=Sun
@@ -44,7 +45,7 @@ export default async function PublicationsPage({
     <>
       <div className="bc-topbar">
         <h2>
-          Publications {selectedClient ? <span className="accent">— {selectedClient.name}</span> : null}
+          Publications {selectedModel ? <span className="accent">— {selectedModel.name}</span> : null}
         </h2>
       </div>
 
@@ -91,7 +92,7 @@ export default async function PublicationsPage({
 
         {byDay.size === 0 && (
           <p style={{ color: "var(--bc-text-faint)", fontStyle: "italic", marginTop: 14 }}>
-            Aucune publication programmée ce mois-ci{selectedClient ? ` pour ${selectedClient.name}` : ""}.
+            Aucune publication programmée ce mois-ci{selectedModel ? ` pour ${selectedModel.name}` : ""}.
           </p>
         )}
 

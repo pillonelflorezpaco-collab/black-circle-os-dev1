@@ -12,8 +12,8 @@ export const PLATFORM_COLOR: Record<string, string> = {
   BLUESKY: "#7FA3C4",
 };
 
-export async function getCalendarMonth(year: number, month: number, clientId?: string | null) {
-  const posts = await postRepository.findByMonth(year, month, clientId);
+export async function getCalendarMonth(year: number, month: number, agencyId: string | null, modelId?: string | null) {
+  const posts = await postRepository.findByMonth(year, month, agencyId, modelId);
   const byDay = new Map<number, { platform: string; color: string; title: string }[]>();
 
   for (const post of posts) {
@@ -30,8 +30,8 @@ export async function getCalendarMonth(year: number, month: number, clientId?: s
   return byDay;
 }
 
-export async function listClientPosts(clientId: string) {
-  const posts = await postRepository.findMany({ video: { clientId } });
+export async function listModelPosts(modelId: string) {
+  const posts = await postRepository.findMany({ video: { modelId } });
   return posts.map((p) => ({
     id: p.id,
     videoTitle: p.video.title,

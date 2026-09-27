@@ -17,6 +17,23 @@ services:
         condition: service_healthy
     command: sh -c "npx prisma migrate deploy && node server.js"
 
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: worker
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      # Same override as `app` — inside the compose network the DB is only
+      # reachable via the service name `db`, never localhost.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_started # only `app` runs `prisma migrate deploy`; worker assumes the schema is already current
+
   db:
     image: postgres:16-alpine
     restart: unless-stopped

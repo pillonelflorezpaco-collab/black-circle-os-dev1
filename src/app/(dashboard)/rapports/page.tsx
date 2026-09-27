@@ -1,7 +1,9 @@
 import { listReports } from "@/services/report.service";
+import { getEffectiveAgencyId } from "@/lib/agencyContext";
 
 export default async function RapportsPage() {
-  const reports = await listReports();
+  const agencyId = await getEffectiveAgencyId();
+  const reports = agencyId ? await listReports(agencyId) : [];
 
   return (
     <>

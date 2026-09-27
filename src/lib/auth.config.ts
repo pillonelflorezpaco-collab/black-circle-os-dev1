@@ -18,12 +18,14 @@ export const authConfig = {
       if (user) {
         token.userId = user.id;
         token.role = (user as { role: Role }).role;
+        token.agencyId = (user as { agencyId: string | null }).agencyId;
       }
       return token;
     },
     async session({ session, token }) {
       if (token.userId) session.user.id = token.userId as string;
       if (token.role) session.user.role = token.role as Role;
+      if (token.agencyId !== undefined) session.user.agencyId = token.agencyId as string | null;
       return session;
     },
   },

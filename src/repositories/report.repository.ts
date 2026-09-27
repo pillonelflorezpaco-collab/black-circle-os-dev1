@@ -2,8 +2,8 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma, ReportStatus } from "@prisma/client";
 
 export const reportRepository = {
-  findMany() {
-    return prisma.report.findMany({ orderBy: { createdAt: "desc" } });
+  findMany(agencyId: string) {
+    return prisma.report.findMany({ where: { agencyId }, orderBy: { createdAt: "desc" } });
   },
   findById(id: string) {
     return prisma.report.findUnique({ where: { id } });

@@ -9,8 +9,8 @@ type KanbanVideo = {
   id: string;
   title: string;
   stage: VideoStage;
-  clientId: string;
-  clientName: string;
+  modelId: string;
+  modelName: string;
   editorInitials: string;
   assignedEditorId: string | null;
   driveUrl: string | null;
@@ -30,16 +30,16 @@ const COLUMNS: { stage: VideoStage; label: string }[] = [
 
 export function KanbanBoard({
   initialVideos,
-  clients,
+  models,
   editors,
   canEdit,
-  defaultClientId,
+  defaultModelId,
 }: {
   initialVideos: KanbanVideo[];
-  clients: { id: string; name: string }[];
+  models: { id: string; name: string }[];
   editors: { id: string; name: string }[];
   canEdit: boolean;
-  defaultClientId?: string | null;
+  defaultModelId?: string | null;
 }) {
   const [videos, setVideos] = useState(initialVideos);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -85,7 +85,7 @@ export function KanbanBoard({
     setEditTarget({
       id: v.id,
       title: v.title,
-      clientId: v.clientId,
+      modelId: v.modelId,
       driveUrl: v.driveUrl,
       caption: v.caption,
       assignedEditorId: v.assignedEditorId,
@@ -206,7 +206,7 @@ export function KanbanBoard({
                       )}
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 10, color: "var(--bc-amber)", fontFamily: "var(--font-jbmono)" }}>{v.clientName}</span>
+                      <span style={{ fontSize: 10, color: "var(--bc-amber)", fontFamily: "var(--font-jbmono)" }}>{v.modelName}</span>
                       <span
                         style={{
                           width: 18,
@@ -241,9 +241,9 @@ export function KanbanBoard({
       {modalOpen && (
         <PipelineVideoModal
           target={editTarget}
-          clients={clients}
+          models={models}
           editors={editors}
-          defaultClientId={defaultClientId}
+          defaultModelId={defaultModelId}
           onClose={closeModal}
         />
       )}

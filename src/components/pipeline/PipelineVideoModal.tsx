@@ -6,7 +6,7 @@ import { createVideoAction, updateVideoAction, deleteVideoAction } from "@/app/(
 export type PipelineVideoEditTarget = {
   id: string;
   title: string;
-  clientId: string;
+  modelId: string;
   driveUrl: string | null;
   caption: string | null;
   assignedEditorId: string | null;
@@ -25,15 +25,15 @@ const STAGES = [
 
 export function PipelineVideoModal({
   target,
-  clients,
+  models,
   editors,
-  defaultClientId,
+  defaultModelId,
   onClose,
 }: {
   target: PipelineVideoEditTarget; // null = create mode
-  clients: { id: string; name: string }[];
+  models: { id: string; name: string }[];
   editors: { id: string; name: string }[];
-  defaultClientId?: string | null;
+  defaultModelId?: string | null;
   onClose: () => void;
 }) {
   const isEdit = !!target;
@@ -85,11 +85,11 @@ export function PipelineVideoModal({
             <input name="title" required defaultValue={target?.title ?? ""} />
           </div>
           <div>
-            <label>Client</label>
-            <select name="clientId" required defaultValue={target?.clientId ?? defaultClientId ?? clients[0]?.id ?? ""}>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+            <label>Model</label>
+            <select name="modelId" required defaultValue={target?.modelId ?? defaultModelId ?? models[0]?.id ?? ""}>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
                 </option>
               ))}
             </select>

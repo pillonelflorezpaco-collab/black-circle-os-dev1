@@ -1,10 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import { periodRange, previousPeriodRange, percentDelta, type Period, type DateRange } from "@/lib/dates";
+import { periodRange, previousPeriodRange, formatDeltaLabel, type Period, type DateRange } from "@/lib/dates";
 
-export async function getAnalyticsSummary(period: Period, clientId?: string | null, customRange?: DateRange) {
+export async function getAnalyticsSummary(period: Period, agencyId: string | null, modelId?: string | null, customRange?: DateRange) {
   const { start, end } = periodRange(period, undefined, customRange);
   const { start: prevStart, end: prevEnd } = previousPeriodRange(period, undefined, customRange);
-  const postFilter = clientId ? { post: { video: { clientId } } } : {};
+  const postFilter = { post: { ...(agencyId ? { agencyId } : {}), ...(modelId ? { video: { modelId } } : {}) } };
 
   const [snapshots, prevSnapshots] = await Promise.all([
     prisma.postMetricSnapshot.findMany({ where: { checkedAt: { gte: start, lt: end }, ...postFilter } }),
@@ -24,7 +24,7 @@ export async function getAnalyticsSummary(period: Period, clientId?: string | nu
 
   return {
     views,
-    delta: percentDelta(views, prevViews),
+    deltaLabel: formatDeltaLabel(views, prevViews),
     likes,
     comments,
     shares,
@@ -33,19 +33,32 @@ export async function getAnalyticsSummary(period: Period, clientId?: string | nu
   };
 }
 
-export async function getTopVideos(limit = 5, clientId?: string | null) {
+// Same latest-snapshot-per-post dedup as getViewsByAccount below — the
+// snapshot table is append-only, so a post tracked over time accumulates
+// multiple rows and picking straight from raw rows would let one popular
+// video crowd the "top" list with several of its own snapshots.
+export async function getTopVideos(period: Period, agencyId: string | null, modelId?: string | null, customRange?: DateRange, limit = 5) {
+  const { start, end } = periodRange(period, undefined, customRange);
   const snapshots = await prisma.postMetricSnapshot.findMany({
-    where: clientId ? { post: { video: { clientId } } } : undefined,
-    include: { post: { include: { video: { include: { client: true } } } } },
-    orderBy: { views: "desc" },
-    take: limit,
+    where: { checkedAt: { gte: start, lt: end }, post: { ...(agencyId ? { agencyId } : {}), ...(modelId ? { video: { modelId } } : {}) } },
+    include: { post: { include: { video: { include: { model: true } } } } },
+    orderBy: { checkedAt: "desc" },
   });
-  return snapshots.map((s) => ({
-    title: s.post.video.title,
-    platform: s.post.platform,
-    views: s.views,
-    likes: s.likes,
-  }));
+
+  const latestByPost = new Map<string, (typeof snapshots)[number]>();
+  for (const s of snapshots) {
+    if (!latestByPost.has(s.postId)) latestByPost.set(s.postId, s);
+  }
+
+  return Array.from(latestByPost.values())
+    .sort((a, b) => b.views - a.views)
+    .slice(0, limit)
+    .map((s) => ({
+      title: s.post.video.title,
+      platform: s.post.platform,
+      views: s.views,
+      likes: s.likes,
+    }));
 }
 
 const DAYPARTS = [
@@ -56,9 +69,10 @@ const DAYPARTS = [
 ];
 
 /** Real aggregation from seeded snapshots — sparse with little data, fills in as more posts accrue. */
-export async function getBestHoursHeatmap(clientId?: string | null) {
+export async function getBestHoursHeatmap(period: Period, agencyId: string | null, modelId?: string | null, customRange?: DateRange) {
+  const { start, end } = periodRange(period, undefined, customRange);
   const snapshots = await prisma.postMetricSnapshot.findMany({
-    where: clientId ? { post: { video: { clientId } } } : undefined,
+    where: { checkedAt: { gte: start, lt: end }, post: { ...(agencyId ? { agencyId } : {}), ...(modelId ? { video: { modelId } } : {}) } },
     include: { post: { select: { scheduledTime: true } } },
   });
 
@@ -74,10 +88,11 @@ export async function getBestHoursHeatmap(clientId?: string | null) {
   return { dayparts: DAYPARTS.map((p) => p.label), grid };
 }
 
-export async function getPlatformBreakdown(clientId?: string | null) {
+export async function getPlatformBreakdown(period: Period, agencyId: string | null, modelId?: string | null, customRange?: DateRange) {
+  const { start, end } = periodRange(period, undefined, customRange);
   const grouped = await prisma.post.groupBy({
     by: ["platform"],
-    where: { status: "PUBLISHED", ...(clientId ? { video: { clientId } } : {}) },
+    where: { status: "PUBLISHED", updatedAt: { gte: start, lt: end }, ...(agencyId ? { agencyId } : {}), ...(modelId ? { video: { modelId } } : {}) },
     _count: true,
   });
   return grouped
@@ -88,12 +103,13 @@ export async function getPlatformBreakdown(clientId?: string | null) {
 /**
  * Total views per social account, using the latest snapshot per post (the
  * snapshot table is append-only, so summing every row would double-count).
- * Sorted descending — the simple "who's performing" view clients ask about.
+ * Sorted descending — the simple "who's performing" view models ask about.
  */
-export async function getViewsByAccount(clientId?: string | null, limit = 6) {
+export async function getViewsByAccount(period: Period, agencyId: string | null, modelId?: string | null, customRange?: DateRange, limit = 6) {
+  const { start, end } = periodRange(period, undefined, customRange);
   const snapshots = await prisma.postMetricSnapshot.findMany({
-    where: clientId ? { post: { video: { clientId } } } : undefined,
-    include: { post: { include: { socialAccount: { include: { client: true } } } } },
+    where: { checkedAt: { gte: start, lt: end }, post: { ...(agencyId ? { agencyId } : {}), ...(modelId ? { video: { modelId } } : {}) } },
+    include: { post: { include: { socialAccount: { include: { model: true } } } } },
     orderBy: { checkedAt: "desc" },
   });
 
@@ -106,7 +122,7 @@ export async function getViewsByAccount(clientId?: string | null, limit = 6) {
   for (const s of latestByPost.values()) {
     const acc = s.post.socialAccount;
     const existing = byAccount.get(acc.id);
-    const label = acc.displayName || acc.client.name;
+    const label = acc.displayName || acc.model.name;
     if (existing) {
       existing.views += s.views;
     } else {
@@ -120,10 +136,13 @@ export async function getViewsByAccount(clientId?: string | null, limit = 6) {
 }
 
 /** Daily view totals for the trend chart, real data (falls back to a flat zero series with no posts yet). */
-export async function getDailyViewSeries(days: number, clientId?: string | null) {
+export async function getDailyViewSeries(days: number, agencyId: string | null, modelId?: string | null) {
   const since = new Date(Date.now() - days * 86_400_000);
   const snapshots = await prisma.postMetricSnapshot.findMany({
-    where: { checkedAt: { gte: since }, ...(clientId ? { post: { video: { clientId } } } : {}) },
+    where: {
+      checkedAt: { gte: since },
+      post: { ...(agencyId ? { agencyId } : {}), ...(modelId ? { video: { modelId } } : {}) },
+    },
     select: { checkedAt: true, views: true },
   });
 

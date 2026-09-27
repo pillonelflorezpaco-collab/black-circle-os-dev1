@@ -2,26 +2,27 @@ import { listPipelineVideos } from "@/services/video.service";
 import { KanbanBoard } from "@/components/pipeline/KanbanBoard";
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
-import { clientRepository } from "@/repositories/client.repository";
+import { modelRepository } from "@/repositories/model.repository";
 import { userRepository } from "@/repositories/user.repository";
-import { getSelectedClientId } from "@/app/actions";
+import { getSelectedModelId } from "@/app/actions";
+import { getEffectiveAgencyId } from "@/lib/agencyContext";
 
 export default async function PipelinePage() {
-  const selectedClientId = await getSelectedClientId();
-  const [videos, session, clients, users] = await Promise.all([
-    listPipelineVideos(selectedClientId),
+  const [selectedModelId, agencyId] = await Promise.all([getSelectedModelId(), getEffectiveAgencyId()]);
+  const [videos, session, models, users] = await Promise.all([
+    listPipelineVideos(agencyId, selectedModelId),
     auth(),
-    clientRepository.findMany(),
-    userRepository.findMany(),
+    modelRepository.findMany(agencyId),
+    userRepository.findMany(agencyId),
   ]);
   const canEdit = !!session?.user && can(session.user.role, "editerPipeline");
-  const selectedClient = selectedClientId ? clients.find((c) => c.id === selectedClientId) : null;
+  const selectedModel = selectedModelId ? models.find((m) => m.id === selectedModelId) : null;
 
   return (
     <>
       <div className="bc-topbar">
         <h2>
-          Content Pipeline {selectedClient ? <span className="accent">— {selectedClient.name}</span> : null}
+          Content Pipeline {selectedModel ? <span className="accent">— {selectedModel.name}</span> : null}
         </h2>
         <div className="bc-status">
           <span className="dot" />
@@ -30,15 +31,15 @@ export default async function PipelinePage() {
       </div>
       <KanbanBoard
         canEdit={canEdit}
-        clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+        models={models.map((m) => ({ id: m.id, name: m.name }))}
         editors={users.map((u) => ({ id: u.id, name: u.name }))}
-        defaultClientId={selectedClientId}
+        defaultModelId={selectedModelId}
         initialVideos={videos.map((v) => ({
           id: v.id,
           title: v.title,
           stage: v.stage,
-          clientId: v.clientId,
-          clientName: v.client.name,
+          modelId: v.modelId,
+          modelName: v.model.name,
           assignedEditorId: v.assignedEditorId,
           driveUrl: v.driveUrl,
           caption: v.caption,

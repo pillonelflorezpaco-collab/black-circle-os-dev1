@@ -8,7 +8,8 @@ import {
 } from "@/services/analytics.service";
 import { Sparkline } from "@/components/dashboard/Sparkline";
 import { PeriodToggle } from "@/components/shared/PeriodToggle";
-import { getSelectedClientId } from "@/app/actions";
+import { getSelectedModelId } from "@/app/actions";
+import { getEffectiveAgencyId } from "@/lib/agencyContext";
 import { prisma } from "@/lib/prisma";
 import type { Period, DateRange } from "@/lib/dates";
 
@@ -37,18 +38,18 @@ export default async function AnalyticsPage({
     if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) customRange = { start, end };
   }
 
-  const selectedClientId = await getSelectedClientId();
-  const selectedClient = selectedClientId
-    ? await prisma.client.findUnique({ where: { id: selectedClientId }, select: { name: true } })
+  const [selectedModelId, agencyId] = await Promise.all([getSelectedModelId(), getEffectiveAgencyId()]);
+  const selectedModel = selectedModelId
+    ? await prisma.model.findUnique({ where: { id: selectedModelId }, select: { name: true } })
     : null;
-  const scopeLabel = selectedClient ? selectedClient.name : "toutes plateformes";
+  const scopeLabel = selectedModel ? selectedModel.name : "toutes plateformes";
 
   const [summary, topVideos, platforms, heatmap, dailySeries] = await Promise.all([
-    getAnalyticsSummary(period, selectedClientId, customRange),
-    getTopVideos(5, selectedClientId),
-    getPlatformBreakdown(selectedClientId),
-    getBestHoursHeatmap(selectedClientId),
-    getDailyViewSeries(30, selectedClientId),
+    getAnalyticsSummary(period, agencyId, selectedModelId, customRange),
+    getTopVideos(period, agencyId, selectedModelId, customRange),
+    getPlatformBreakdown(period, agencyId, selectedModelId, customRange),
+    getBestHoursHeatmap(period, agencyId, selectedModelId, customRange),
+    getDailyViewSeries(30, agencyId, selectedModelId),
   ]);
 
   const maxHm = Math.max(1, ...heatmap.grid.flat());
@@ -75,10 +76,7 @@ export default async function AnalyticsPage({
           <div>
             <div className="amt-row">
               <div className="amt">{summary.views.toLocaleString("fr-FR")}</div>
-              <div className="pill">
-                {summary.delta >= 0 ? "+" : ""}
-                {summary.delta}% vs période préc.
-              </div>
+              <div className="pill">{summary.deltaLabel}</div>
             </div>
             <div className="sub">Vues totales</div>
           </div>

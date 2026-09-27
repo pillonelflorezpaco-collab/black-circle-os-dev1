@@ -2,11 +2,11 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma, VideoStage } from "@prisma/client";
 
 export const videoRepository = {
-  findAllGroupedByStage(clientId?: string | null) {
+  findAllGroupedByStage(agencyId: string | null, modelId?: string | null) {
     return prisma.video.findMany({
-      where: clientId ? { clientId } : undefined,
+      where: { ...(agencyId ? { agencyId } : {}), ...(modelId ? { modelId } : {}) },
       include: {
-        client: { select: { id: true, name: true } },
+        model: { select: { id: true, name: true } },
         assignedEditor: { select: { id: true, name: true } },
         lastEditedBy: { select: { id: true, name: true } },
       },
@@ -17,7 +17,7 @@ export const videoRepository = {
   findById(id: string) {
     return prisma.video.findUnique({
       where: { id },
-      include: { client: true, assignedEditor: true, posts: true },
+      include: { model: true, assignedEditor: true, posts: true },
     });
   },
 
@@ -40,11 +40,11 @@ export const videoRepository = {
     return prisma.video.delete({ where: { id } });
   },
 
-  /** Days of unpublished content left for a client, used by the "contenu restant" gauges. */
-  countByClientAndStage(clientId: string) {
+  /** Days of unpublished content left for a model, used by the "contenu restant" gauges. */
+  countByModelAndStage(modelId: string) {
     return prisma.video.groupBy({
       by: ["stage"],
-      where: { clientId },
+      where: { modelId },
       _count: true,
     });
   },

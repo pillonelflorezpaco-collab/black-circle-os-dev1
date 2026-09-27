@@ -1,18 +1,28 @@
 import bcrypt from "bcryptjs";
 import type { Role } from "@prisma/client";
 import { userRepository } from "@/repositories/user.repository";
-import { assertCan } from "@/lib/permissions";
+import { assertCan, assertSameAgency } from "@/lib/permissions";
 
 const ROLE_LABELS: Record<string, string> = {
-  ADMIN: "Admin",
-  MANAGER: "Manager",
+  SUPER_ADMIN: "Super Admin",
+  OWNER: "Owner",
+  AGENCY_MANAGER: "Agency Manager",
+  CLOSER: "Closer",
+  SALES: "Sales",
+  CHATTER_MANAGER: "Chatter Manager",
+  CHATTER: "Chatter",
+  CONTENT_MANAGER: "Content Manager",
+  EDITOR: "Editor",
+  VIDEO_EDITOR: "Video Editor",
   ASSISTANT: "Assistant",
-  MONTEUR: "Monteur",
+  MODEL_ROLE: "Model",
+  FINANCE: "Finance",
+  DEVELOPER: "Developer",
   VIEWER: "Viewer",
 };
 
-export async function listTeamMembers() {
-  const users = await userRepository.findMany();
+export async function listTeamMembers(agencyId?: string | null) {
+  const users = await userRepository.findMany(agencyId);
   return users.map((u) => {
     const videosInProgress = u.assignedVideos.filter((v) =>
       ["A_EDITER", "EN_EDITION", "PRET_POUR_REVIEW"].includes(v.stage)
@@ -39,19 +49,24 @@ export async function listTeamMembers() {
 
 export async function createTeamMember(
   input: { name: string; email: string; password: string; role: Role },
-  actorRole: Role
+  actorRole: Role,
+  agencyId: string
 ) {
   assertCan(actorRole, "gererEquipe");
   const passwordHash = await bcrypt.hash(input.password, 10);
-  return userRepository.create({ name: input.name, email: input.email, passwordHash, role: input.role });
+  return userRepository.create({ name: input.name, email: input.email, passwordHash, role: input.role, agency: { connect: { id: agencyId } } });
 }
 
-export async function updateTeamMemberRole(userId: string, role: Role, actorRole: Role) {
+export async function updateTeamMemberRole(userId: string, role: Role, actorRole: Role, actingAgencyId: string | null) {
   assertCan(actorRole, "gererEquipe");
+  const target = await userRepository.findById(userId);
+  assertSameAgency(actingAgencyId, target?.agencyId);
   return userRepository.update(userId, { role });
 }
 
-export async function removeTeamMember(userId: string, actorRole: Role) {
+export async function removeTeamMember(userId: string, actorRole: Role, actingAgencyId: string | null) {
   assertCan(actorRole, "gererEquipe");
+  const target = await userRepository.findById(userId);
+  assertSameAgency(actingAgencyId, target?.agencyId);
   return userRepository.delete(userId);
 }

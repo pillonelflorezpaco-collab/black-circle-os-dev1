@@ -4,7 +4,20 @@ import { useState, useTransition } from "react";
 import type { Role } from "@prisma/client";
 import { updateTeamMemberRoleAction, removeTeamMemberAction } from "./actions";
 
-const ROLES: Role[] = ["ADMIN", "MANAGER", "ASSISTANT", "MONTEUR", "VIEWER"];
+const ROLES: Role[] = [
+  "OWNER",
+  "AGENCY_MANAGER",
+  "CONTENT_MANAGER",
+  "EDITOR",
+  "VIDEO_EDITOR",
+  "ASSISTANT",
+  "CLOSER",
+  "SALES",
+  "CHATTER_MANAGER",
+  "CHATTER",
+  "FINANCE",
+  "DEVELOPER",
+];
 
 export default function TeamMemberActions({ userId, role }: { userId: string; role: Role }) {
   const [isPending, startTransition] = useTransition();

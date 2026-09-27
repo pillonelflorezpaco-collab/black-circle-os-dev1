@@ -4,7 +4,9 @@ import { PLATFORM_COLOR } from "@/services/post.service";
 import { Sparkline } from "@/components/dashboard/Sparkline";
 import { RingGauge } from "@/components/shared/RingGauge";
 import { PeriodToggle } from "@/components/shared/PeriodToggle";
-import { getSelectedClientId } from "@/app/actions";
+import { getSelectedModelId } from "@/app/actions";
+import { getEffectiveAgencyId } from "@/lib/agencyContext";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCompactNumber } from "@/lib/utils";
 import type { Period, DateRange } from "@/lib/dates";
@@ -40,14 +42,15 @@ export default async function DashboardPage({
     if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) customRange = { start, end };
   }
 
-  const selectedClientId = await getSelectedClientId();
-  const selectedClient = selectedClientId
-    ? await prisma.client.findUnique({ where: { id: selectedClientId }, select: { name: true } })
+  const [selectedModelId, agencyId, session] = await Promise.all([getSelectedModelId(), getEffectiveAgencyId(), auth()]);
+  const firstName = session?.user?.name?.split(" ")[0] ?? "";
+  const selectedModel = selectedModelId
+    ? await prisma.model.findUnique({ where: { id: selectedModelId }, select: { name: true } })
     : null;
 
   const [data, viewsByAccount] = await Promise.all([
-    getDashboardData(period, selectedClientId, customRange),
-    getViewsByAccount(selectedClientId),
+    getDashboardData(period, agencyId, selectedModelId, customRange),
+    getViewsByAccount(period, agencyId, selectedModelId, customRange),
   ]);
   const maxViews = viewsByAccount.length > 0 ? viewsByAccount[0].views : 0;
 
@@ -55,7 +58,7 @@ export default async function DashboardPage({
     <>
       <div className="bc-topbar">
         <h2>
-          Bonjour, <span className="accent">Angels</span>
+          Bonjour, <span className="accent">{firstName}</span>
         </h2>
         <div className="bc-status">
           <span className="dot" />
@@ -66,7 +69,7 @@ export default async function DashboardPage({
       <div className="bc-hero-glow">
         <div className="top-row">
           <div className="lab">
-            Vue d&apos;ensemble — Production {selectedClient ? `— ${selectedClient.name}` : ""}
+            Vue d&apos;ensemble — Production {selectedModel ? `— ${selectedModel.name}` : ""}
           </div>
           <PeriodToggle period={period} from={params.from} to={params.to} />
         </div>
@@ -111,8 +114,8 @@ export default async function DashboardPage({
             <div className="bc-sb-item">
               <div className="bc-sb-icon c-amber">C</div>
               <div>
-                <div className="bc-sb-val">{data.tiles.activeClients}</div>
-                <div className="bc-sb-lab">Clients actifs</div>
+                <div className="bc-sb-val">{data.tiles.activeModels}</div>
+                <div className="bc-sb-lab">Models actifs</div>
               </div>
             </div>
             <div className="bc-sb-item">
@@ -132,8 +135,8 @@ export default async function DashboardPage({
 
       <div className="bc-grid4">
         <div className="bc-mini-card">
-          <div className="lab">Clients actifs</div>
-          <div className="val amber">{data.tiles.activeClients}</div>
+          <div className="lab">Models actifs</div>
+          <div className="val amber">{data.tiles.activeModels}</div>
         </div>
         <div className="bc-mini-card">
           <div className="lab">Publications ({PERIOD_LABELS[period].toLowerCase()})</div>
@@ -162,10 +165,6 @@ export default async function DashboardPage({
             <span className="unit">jours</span>
           </div>
         </div>
-        <div className="bc-mini-card">
-          <div className="lab">Vidéos publiées ({PERIOD_LABELS[period].toLowerCase()})</div>
-          <div className="val pos">{data.tiles.publishedThisPeriod}</div>
-        </div>
       </div>
 
       <div className="bc-section-title">
@@ -183,7 +182,7 @@ export default async function DashboardPage({
                 <div className={`bc-watch-icon ${severityIcon(entry.severity)}`}>•</div>
                 <div>
                   <div className="bc-watch-name">{entry.message}</div>
-                  {entry.client && <div className="bc-watch-sub">{entry.client.name}</div>}
+                  {entry.model && <div className="bc-watch-sub">{entry.model.name}</div>}
                 </div>
               </div>
               <div className="bc-watch-right">
@@ -196,7 +195,7 @@ export default async function DashboardPage({
 
       <div className="bc-section-title">
         <div className="st-left">
-          <span className="eyebrow">Stock</span>Contenu restant par client
+          <span className="eyebrow">Stock</span>Contenu restant par model
         </div>
       </div>
       <div className="bc-card">

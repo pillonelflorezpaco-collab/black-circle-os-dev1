@@ -5,7 +5,7 @@ export const postRepository = {
   findMany(where?: Prisma.PostWhereInput) {
     return prisma.post.findMany({
       where,
-      include: { video: { include: { client: true } }, socialAccount: true },
+      include: { video: { include: { model: true } }, socialAccount: true },
       orderBy: { scheduledTime: "asc" },
     });
   },
@@ -13,16 +13,20 @@ export const postRepository = {
   findById(id: string) {
     return prisma.post.findUnique({
       where: { id },
-      include: { video: { include: { client: true } }, socialAccount: true, metricSnapshots: true },
+      include: { video: { include: { model: true } }, socialAccount: true, metricSnapshots: true },
     });
   },
 
-  findByMonth(year: number, month: number, clientId?: string | null) {
+  findByMonth(year: number, month: number, agencyId: string | null, modelId?: string | null) {
     const start = new Date(Date.UTC(year, month - 1, 1));
     const end = new Date(Date.UTC(year, month, 1));
     return prisma.post.findMany({
-      where: { scheduledTime: { gte: start, lt: end }, ...(clientId ? { video: { clientId } } : {}) },
-      include: { video: { select: { title: true, clientId: true } } },
+      where: {
+        scheduledTime: { gte: start, lt: end },
+        ...(agencyId ? { agencyId } : {}),
+        ...(modelId ? { video: { modelId } } : {}),
+      },
+      include: { video: { select: { title: true, modelId: true } } },
       orderBy: { scheduledTime: "asc" },
     });
   },

@@ -4,23 +4,23 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { signOut } from "@/lib/auth";
 
-const CLIENT_COOKIE = "bc_client_id";
+const MODEL_COOKIE = "bc_model_id";
 
 export async function logout() {
   await signOut({ redirectTo: "/login" });
 }
 
-export async function setSelectedClient(clientId: string | null) {
+export async function setSelectedModel(modelId: string | null) {
   const store = await cookies();
-  if (clientId) {
-    store.set(CLIENT_COOKIE, clientId, { path: "/", maxAge: 60 * 60 * 24 * 30 });
+  if (modelId) {
+    store.set(MODEL_COOKIE, modelId, { path: "/", maxAge: 60 * 60 * 24 * 30 });
   } else {
-    store.delete(CLIENT_COOKIE);
+    store.delete(MODEL_COOKIE);
   }
   revalidatePath("/", "layout");
 }
 
-export async function getSelectedClientId(): Promise<string | null> {
+export async function getSelectedModelId(): Promise<string | null> {
   const store = await cookies();
-  return store.get(CLIENT_COOKIE)?.value ?? null;
+  return store.get(MODEL_COOKIE)?.value ?? null;
 }

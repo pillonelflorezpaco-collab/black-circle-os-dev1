@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { signClientSession } from "@/lib/clientSession";
+import { signModelSession } from "@/lib/modelSession";
 
 const PORTAL_COOKIE = "bc_portal_session";
 
@@ -11,10 +11,10 @@ export async function authenticatePortal(_prevState: string | undefined, formDat
   const code = String(formData.get("code") || "").trim().toUpperCase();
   if (!code) return "Code requis.";
 
-  const client = await prisma.client.findUnique({ where: { accessCode: code } });
-  if (!client) return "Code invalide.";
+  const model = await prisma.model.findUnique({ where: { accessCode: code } });
+  if (!model) return "Code invalide.";
 
-  const token = await signClientSession(client.id);
+  const token = await signModelSession(model.id);
   const store = await cookies();
   store.set(PORTAL_COOKIE, token, {
     httpOnly: true,

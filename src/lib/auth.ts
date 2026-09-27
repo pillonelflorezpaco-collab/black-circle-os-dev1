@@ -11,6 +11,7 @@ declare module "next-auth" {
       name: string;
       email: string;
       role: import("@prisma/client").Role;
+      agencyId: string | null;
     };
   }
 }
@@ -19,6 +20,7 @@ declare module "@auth/core/jwt" {
   interface JWT {
     role?: import("@prisma/client").Role;
     userId?: string;
+    agencyId?: string | null;
   }
 }
 
@@ -41,7 +43,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
 
-        return { id: user.id, name: user.name, email: user.email, role: user.role };
+        return { id: user.id, name: user.name, email: user.email, role: user.role, agencyId: user.agencyId };
       },
     }),
   ],

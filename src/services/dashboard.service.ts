@@ -1,53 +1,51 @@
 import { prisma } from "@/lib/prisma";
 import { activityRepository } from "@/repositories/activity.repository";
-import { periodRange, previousPeriodRange, percentDelta, type Period, type DateRange } from "@/lib/dates";
+import { periodRange, previousPeriodRange, formatDeltaLabel, type Period, type DateRange } from "@/lib/dates";
+import { computeDaysRemaining } from "@/lib/contentStock";
 
-export async function getDashboardData(period: Period, clientId?: string | null, customRange?: DateRange) {
+export async function getDashboardData(period: Period, agencyId: string | null, modelId?: string | null, customRange?: DateRange) {
   const { start, end } = periodRange(period, undefined, customRange);
   const { start: prevStart, end: prevEnd } = previousPeriodRange(period, undefined, customRange);
-  const clientFilter = clientId ? { video: { clientId } } : {};
-  const videoClientFilter = clientId ? { clientId } : {};
+  const agencyFilter = agencyId ? { agencyId } : {};
+  const modelFilter = modelId ? { video: { modelId } } : {};
+  const videoModelFilter = modelId ? { modelId } : {};
 
   const [
-    activeClients,
+    activeModels,
     publishedThisPeriod,
     publishedPrevPeriod,
     scheduledCount,
     editingCount,
     reviewCount,
     errorCount,
-    clients,
+    models,
     activity,
   ] = await Promise.all([
-    clientId ? Promise.resolve(1) : prisma.client.count(),
-    prisma.post.count({ where: { status: "PUBLISHED", updatedAt: { gte: start, lt: end }, ...clientFilter } }),
-    prisma.post.count({ where: { status: "PUBLISHED", updatedAt: { gte: prevStart, lt: prevEnd }, ...clientFilter } }),
-    prisma.post.count({ where: { status: "SCHEDULED", ...clientFilter } }),
-    prisma.video.count({ where: { stage: "EN_EDITION", ...videoClientFilter } }),
-    prisma.video.count({ where: { stage: "PRET_POUR_REVIEW", ...videoClientFilter } }),
-    prisma.post.count({ where: { status: "FAILED", ...clientFilter } }),
-    prisma.client.findMany({
-      where: clientId ? { id: clientId } : undefined,
+    modelId ? Promise.resolve(1) : prisma.model.count({ where: agencyFilter }),
+    prisma.post.count({ where: { status: "PUBLISHED", updatedAt: { gte: start, lt: end }, ...agencyFilter, ...modelFilter } }),
+    prisma.post.count({ where: { status: "PUBLISHED", updatedAt: { gte: prevStart, lt: prevEnd }, ...agencyFilter, ...modelFilter } }),
+    prisma.post.count({ where: { status: "SCHEDULED", ...agencyFilter, ...modelFilter } }),
+    prisma.video.count({ where: { stage: "EN_EDITION", ...agencyFilter, ...videoModelFilter } }),
+    prisma.video.count({ where: { stage: "PRET_POUR_REVIEW", ...agencyFilter, ...videoModelFilter } }),
+    prisma.post.count({ where: { status: "FAILED", ...agencyFilter, ...modelFilter } }),
+    prisma.model.findMany({
+      where: { ...agencyFilter, ...(modelId ? { id: modelId } : {}) },
       include: { videos: { select: { stage: true, stageUpdatedAt: true } } },
       orderBy: { name: "asc" },
     }),
-    activityRepository.findRecent(6, clientId),
+    activityRepository.findRecent(6, agencyId, modelId),
   ]);
 
-  const delta = percentDelta(publishedThisPeriod, publishedPrevPeriod);
-
-  // "Contenu restant" — days of unpublished content per client, approximated from
-  // how many videos are queued (RAW..PROGRAMME) vs. how many publish per week.
-  const contentRemaining = clients.map((c) => {
-    const queued = c.videos.filter((v) => v.stage !== "PUBLIE").length;
-    const days = Math.max(0.5, queued * 1.8); // placeholder cadence until real publish-rate data accrues
-    return { id: c.id, name: c.name, days: Math.round(days * 10) / 10 };
-  });
+  const contentRemaining = models.map((m) => ({
+    id: m.id,
+    name: m.name,
+    days: computeDaysRemaining(m.videos),
+  }));
 
   // 30-day daily published-video trend, real data.
   const since = new Date(Date.now() - 29 * 86_400_000);
   const recentPublished = await prisma.post.findMany({
-    where: { status: "PUBLISHED", updatedAt: { gte: since }, ...clientFilter },
+    where: { status: "PUBLISHED", updatedAt: { gte: since }, ...agencyFilter, ...modelFilter },
     select: { updatedAt: true },
   });
   const byDay = new Map<string, number>();
@@ -67,10 +65,9 @@ export async function getDashboardData(period: Period, clientId?: string | null,
   return {
     period,
     heroAmount: publishedThisPeriod,
-    heroDeltaLabel: `${delta >= 0 ? "+" : ""}${delta}% vs période préc.`,
+    heroDeltaLabel: formatDeltaLabel(publishedThisPeriod, publishedPrevPeriod),
     tiles: {
-      activeClients,
-      publishedToday: publishedThisPeriod,
+      activeModels,
       scheduledCount,
       publishedThisPeriod,
       editingCount,
@@ -82,7 +79,7 @@ export async function getDashboardData(period: Period, clientId?: string | null,
           : 0,
     },
     activity,
-    contentRemaining: contentRemaining.slice(0, 4),
+    contentRemaining,
     trend,
   };
 }

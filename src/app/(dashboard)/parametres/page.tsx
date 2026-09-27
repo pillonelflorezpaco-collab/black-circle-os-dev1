@@ -1,13 +1,31 @@
 import { PERMISSIONS, can } from "@/lib/permissions";
 import type { Role } from "@prisma/client";
 
-const ROLES: Role[] = ["ADMIN", "MANAGER", "ASSISTANT", "MONTEUR", "VIEWER"];
+const ROLES: Role[] = [
+  "SUPER_ADMIN",
+  "OWNER",
+  "AGENCY_MANAGER",
+  "CONTENT_MANAGER",
+  "EDITOR",
+  "VIDEO_EDITOR",
+  "ASSISTANT",
+  "CLOSER",
+  "SALES",
+  "CHATTER_MANAGER",
+  "CHATTER",
+  "FINANCE",
+  "DEVELOPER",
+];
 
 const PERMISSION_LABELS: Record<string, string> = {
-  voirClients: "Voir les clients",
+  voirAgences: "Voir les agences",
+  gererAgences: "Gérer les agences",
+  voirModels: "Voir les models",
+  gererModels: "Gérer les models",
   editerPipeline: "Éditer le pipeline",
   validerVideos: "Valider les vidéos",
   publier: "Publier",
+  voirCalendrier: "Voir le calendrier",
   gererEquipe: "Gérer l'équipe",
   facturation: "Facturation",
   automatisations: "Automatisations",

@@ -2,8 +2,9 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 
 export const userRepository = {
-  findMany() {
+  findMany(agencyId?: string | null) {
     return prisma.user.findMany({
+      where: agencyId ? { agencyId } : undefined,
       include: { team: true, assignedVideos: { select: { id: true, stage: true } } },
       orderBy: { name: "asc" },
     });

@@ -22,19 +22,21 @@ export async function updateVideoStage(videoId: string, stage: VideoStage, actor
     stageUpdatedAt: new Date(),
     ...(actorId ? { lastEditedBy: { connect: { id: actorId } } } : {}),
   });
-  const withClient = await videoRepository.findById(videoId);
-  const clientName = withClient?.client?.name ?? "Client inconnu";
+  const withModel = await videoRepository.findById(videoId);
+  const modelName = withModel?.model?.name ?? "Model inconnu";
+  const agencyId = video.agencyId;
 
   await activityRepository.log({
     eventType: "VIDEO_STAGE_CHANGED",
-    message: `Vidéo déplacée vers ${STAGE_LABELS[stage]} — ${video.title} (${clientName})`,
+    message: `Vidéo déplacée vers ${STAGE_LABELS[stage]} — ${video.title} (${modelName})`,
     severity: "OK",
-    clientId: withClient?.clientId,
+    modelId: withModel?.modelId,
     actorId,
+    agencyId,
   });
 
   if (stage === "PRET_POUR_REVIEW") {
-    await notifyReviewNeeded(video.id, video.title, clientName);
+    await notifyReviewNeeded(video.id, video.title, modelName, agencyId);
   }
 
   return video;
@@ -46,27 +48,27 @@ export async function updateVideoStage(videoId: string, stage: VideoStage, actor
  * failing must not block the stage change itself — errors are logged to the
  * Integration row so the Automatisations page can surface them.
  */
-async function notifyReviewNeeded(videoId: string, title: string, clientName: string) {
-  const message = `🎬 <b>À valider</b> — ${title} (${clientName})`;
+async function notifyReviewNeeded(videoId: string, title: string, modelName: string, agencyId: string) {
+  const message = `🎬 <b>À valider</b> — ${title} (${modelName})`;
 
   const results = await Promise.allSettled([
     createCalendarEvent({
-      summary: `À valider : ${title} — ${clientName}`,
+      summary: `À valider : ${title} — ${modelName}`,
       description: `Vidéo prête pour review dans Black Circle OS.\nhttp://localhost:3000/pipeline`,
       startTime: new Date(),
       durationMinutes: 30,
     })
-      .then(() => integrationRepository.updateStatus("GOOGLE_CALENDAR", "CONNECTED", { lastSyncAt: new Date() }))
+      .then(() => integrationRepository.updateStatus(agencyId, "GOOGLE_CALENDAR", "CONNECTED", { lastSyncAt: new Date() }))
       .catch((err) => {
         console.error("[notifyReviewNeeded] calendar failed:", err);
-        return integrationRepository.updateStatus("GOOGLE_CALENDAR", "DISCONNECTED", { lastError: String(err?.message ?? err) });
+        return integrationRepository.updateStatus(agencyId, "GOOGLE_CALENDAR", "DISCONNECTED", { lastError: String(err?.message ?? err) });
       }),
 
     sendTelegramMessage(message)
-      .then(() => integrationRepository.updateStatus("TELEGRAM", "CONNECTED", { lastSyncAt: new Date() }))
+      .then(() => integrationRepository.updateStatus(agencyId, "TELEGRAM", "CONNECTED", { lastSyncAt: new Date() }))
       .catch((err) => {
         console.error("[notifyReviewNeeded] telegram failed:", err);
-        return integrationRepository.updateStatus("TELEGRAM", "DISCONNECTED", { lastError: String(err?.message ?? err) });
+        return integrationRepository.updateStatus(agencyId, "TELEGRAM", "DISCONNECTED", { lastError: String(err?.message ?? err) });
       }),
   ]);
   for (const r of results) {
@@ -76,12 +78,12 @@ async function notifyReviewNeeded(videoId: string, title: string, clientName: st
   }
 }
 
-export async function listPipelineVideos(clientId?: string | null) {
-  return videoRepository.findAllGroupedByStage(clientId);
+export async function listPipelineVideos(agencyId: string | null, modelId?: string | null) {
+  return videoRepository.findAllGroupedByStage(agencyId, modelId);
 }
 
-export async function getClientStageCounts(clientId: string) {
-  const grouped = await videoRepository.countByClientAndStage(clientId);
+export async function getModelStageCounts(modelId: string) {
+  const grouped = await videoRepository.countByModelAndStage(modelId);
   const counts = Object.fromEntries(Object.keys(STAGE_LABELS).map((s) => [s, 0])) as Record<VideoStage, number>;
   for (const g of grouped) counts[g.stage] = g._count;
   return counts;
@@ -89,18 +91,19 @@ export async function getClientStageCounts(clientId: string) {
 
 export type VideoDetailsInput = {
   title: string;
-  clientId: string;
+  modelId: string;
   driveUrl?: string | null;
   caption?: string | null;
   assignedEditorId?: string | null;
   stage?: VideoStage;
 };
 
-export async function createVideo(input: VideoDetailsInput, actorRole: Role, actorId?: string) {
+export async function createVideo(input: VideoDetailsInput, actorRole: Role, agencyId: string, actorId?: string) {
   assertCan(actorRole, "editerPipeline");
   return videoRepository.create({
     title: input.title,
-    client: { connect: { id: input.clientId } },
+    model: { connect: { id: input.modelId } },
+    agency: { connect: { id: agencyId } },
     driveUrl: input.driveUrl || null,
     caption: input.caption || null,
     stage: input.stage ?? "RAW",
@@ -113,7 +116,7 @@ export async function updateVideoDetails(videoId: string, input: VideoDetailsInp
   assertCan(actorRole, "editerPipeline");
   return videoRepository.update(videoId, {
     title: input.title,
-    client: { connect: { id: input.clientId } },
+    model: { connect: { id: input.modelId } },
     driveUrl: input.driveUrl || null,
     caption: input.caption || null,
     assignedEditor: input.assignedEditorId ? { connect: { id: input.assignedEditorId } } : { disconnect: true },

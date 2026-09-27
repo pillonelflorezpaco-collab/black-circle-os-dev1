@@ -3,7 +3,20 @@
 import { useActionState } from "react";
 import { addTeamMember } from "./actions";
 
-const ROLES = ["ADMIN", "MANAGER", "ASSISTANT", "MONTEUR", "VIEWER"];
+const ROLES = [
+  "OWNER",
+  "AGENCY_MANAGER",
+  "CONTENT_MANAGER",
+  "EDITOR",
+  "VIDEO_EDITOR",
+  "ASSISTANT",
+  "CLOSER",
+  "SALES",
+  "CHATTER_MANAGER",
+  "CHATTER",
+  "FINANCE",
+  "DEVELOPER",
+];
 
 export default function TeamMemberForm() {
   const [error, formAction, pending] = useActionState(addTeamMember, undefined);
@@ -30,7 +43,7 @@ export default function TeamMemberForm() {
         </div>
         <div>
           <label>Rôle</label>
-          <select name="role" defaultValue="MONTEUR">
+          <select name="role" defaultValue="VIDEO_EDITOR">
             {ROLES.map((r) => (
               <option key={r} value={r}>
                 {r}
