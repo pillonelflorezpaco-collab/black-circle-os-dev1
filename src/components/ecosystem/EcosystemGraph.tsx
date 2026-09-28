@@ -7,14 +7,16 @@ import {
   peopleBySector,
   type EcosystemPerson,
 } from "@/lib/ecosystem-mock-data";
+import { buildOuterBelt } from "@/lib/ecosystem-decor";
 import { PersonPanel } from "./PersonPanel";
 
 const WIDTH = 900;
 const HEIGHT = 640;
-const CENTER = { x: WIDTH / 2, y: HEIGHT / 2 - 20 };
+const CENTER = { x: WIDTH / 2, y: HEIGHT / 2 - 10 };
 const SECTOR_RADIUS = 150;
-const LEAF_RADIUS = 260;
+const LEAF_RADIUS = 250;
 const LEAF_SPREAD_DEG = 46; // arc width (degrees) each sector's leaves fan across
+const ORBIT_RADII = [SECTOR_RADIUS + 40, LEAF_RADIUS + 15];
 
 function sectorPosition(index: number, total: number) {
   const angle = (index / total) * 2 * Math.PI - Math.PI / 2;
@@ -46,6 +48,7 @@ export function EcosystemGraph() {
     () => SECTORS.map((sector, i) => ({ sector, pos: sectorPosition(i, SECTORS.length) })),
     []
   );
+  const outerBelt = useMemo(() => buildOuterBelt(34), []);
 
   const activeSector = sectorNodes.find((s) => s.sector.id === activeSectorId) ?? null;
   const activeAgents = activeSectorId ? agentsBySector(activeSectorId) : [];
@@ -65,6 +68,61 @@ export function EcosystemGraph() {
 
       <div className="bc-eco-wrap">
         <svg className="bc-eco-svg" viewBox={`0 0 ${WIDTH} ${HEIGHT}`}>
+          <defs>
+            <radialGradient id="eco-core-glow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="var(--bc-amber)" stopOpacity="0.32" />
+              <stop offset="45%" stopColor="var(--bc-amber)" stopOpacity="0.1" />
+              <stop offset="100%" stopColor="var(--bc-amber)" stopOpacity="0" />
+            </radialGradient>
+            <filter id="eco-blur-soft" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="6" />
+            </filter>
+            <filter id="eco-blur-tight" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="2.4" />
+            </filter>
+          </defs>
+
+          {/* ambient glow behind Jarvis */}
+          <circle cx={CENTER.x} cy={CENTER.y} r={220} fill="url(#eco-core-glow)" />
+
+          {/* decorative orbit rings (dotted) */}
+          {ORBIT_RADII.map((r) => (
+            <circle
+              key={r}
+              cx={CENTER.x}
+              cy={CENTER.y}
+              r={r}
+              fill="none"
+              stroke="var(--bc-amber-dim)"
+              strokeWidth={1}
+              strokeDasharray="1.5 9"
+              opacity={0.35}
+            />
+          ))}
+
+          {/* decorative outer belt of unassigned tool glyphs */}
+          <g opacity={0.9}>
+            {outerBelt.map((d, i) => {
+              const rad = (d.angleDeg * Math.PI) / 180;
+              const x = Math.round(CENTER.x + d.radius * Math.cos(rad));
+              const y = Math.round(CENTER.y + d.radius * Math.sin(rad));
+              if (y > HEIGHT + 20 || y < -20) return null;
+              return (
+                <g key={i} transform={`translate(${x}, ${y})`} opacity={d.opacity}>
+                  <polygon
+                    points={hexPoints(d.size)}
+                    fill="var(--bc-surface-2)"
+                    stroke="var(--bc-border)"
+                    strokeWidth={0.8}
+                  />
+                  <text textAnchor="middle" dominantBaseline="central" fontSize={d.size * 0.75} fill="var(--bc-text-faint)">
+                    {d.glyph}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+
           {/* links: Jarvis -> sectors */}
           {sectorNodes.map(({ sector, pos }) => (
             <line
@@ -74,6 +132,7 @@ export function EcosystemGraph() {
               y1={CENTER.y}
               x2={pos.x}
               y2={pos.y}
+              filter={activeSectorId === sector.id ? "url(#eco-blur-tight)" : undefined}
             />
           ))}
 
@@ -92,6 +151,7 @@ export function EcosystemGraph() {
 
           {/* Jarvis core */}
           <g className="bc-eco-node-core" transform={`translate(${CENTER.x}, ${CENTER.y})`}>
+            <circle r={34} fill="var(--bc-amber)" opacity={0.16} filter="url(#eco-blur-soft)" />
             <circle r={30} fill="#0b0b0b" stroke="var(--bc-amber)" strokeWidth={1.5} />
             <circle r={4} fill="var(--bc-amber)" />
             <text className="bc-eco-label-core" y={48} textAnchor="middle" fontSize={13}>
@@ -109,6 +169,7 @@ export function EcosystemGraph() {
                 transform={`translate(${pos.x}, ${pos.y})`}
                 onClick={() => setActiveSectorId(isActive ? null : sector.id)}
               >
+                {isActive && <circle r={30} fill={sector.color} opacity={0.28} filter="url(#eco-blur-soft)" />}
                 <circle
                   r={22}
                   fill={isActive ? sector.color : "#0b0b0b"}
@@ -160,6 +221,7 @@ export function EcosystemGraph() {
                     setActivePerson(person);
                   }}
                 >
+                  <circle r={20} fill="var(--bc-amber)" opacity={0.18} filter="url(#eco-blur-tight)" />
                   <circle r={17} fill="var(--bc-surface-2)" stroke="var(--bc-amber-dim)" strokeWidth={1.2} />
                   <text textAnchor="middle" dominantBaseline="central" fontSize={11} fill="var(--bc-amber)" fontFamily="var(--font-fraunces)" fontStyle="italic">
                     {person.initial}
@@ -176,4 +238,11 @@ export function EcosystemGraph() {
       {activePerson && <PersonPanel person={activePerson} onClose={() => setActivePerson(null)} />}
     </>
   );
+}
+
+function hexPoints(size: number) {
+  return Array.from({ length: 6 }, (_, i) => {
+    const angle = (Math.PI / 3) * i - Math.PI / 2;
+    return `${(size * Math.cos(angle)).toFixed(1)},${(size * Math.sin(angle)).toFixed(1)}`;
+  }).join(" ");
 }
