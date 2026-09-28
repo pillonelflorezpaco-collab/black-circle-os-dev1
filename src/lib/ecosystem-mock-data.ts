@@ -64,6 +64,13 @@ export const AGENTS: EcosystemAgent[] = [
   { id: "wf7", name: "Reporting Stratégique", sectorId: "strategie", icon: "WF7", status: "draft" },
   { id: "wf8", name: "Analyse Data", sectorId: "data", icon: "WF8", status: "draft" },
   { id: "wf9", name: "Suivi Légal/RH", sectorId: "legal-rh", icon: "WF9", status: "draft" },
+  // Déjà construit côté agence (Blotato) — auto-publication des posts
+  // programmés sur les réseaux, teasers OFM comme contenu client agence.
+  { id: "wf10", name: "Auto-Posting", sectorId: "contenu", icon: "WF10", status: "active" },
+  // Reste du blueprint agence Marketing + OFM — pas encore construits.
+  { id: "wf11", name: "Chatting DM (OFM)", sectorId: "ofm", icon: "WF11", status: "draft" },
+  { id: "wf12", name: "Ads & Paid Sync", sectorId: "marketing", icon: "WF12", status: "draft" },
+  { id: "wf13", name: "Reporting Client", sectorId: "marketing", icon: "WF13", status: "draft" },
 ];
 
 // Real brand colors — used across the ecosystem graph so each tool reads
@@ -78,6 +85,7 @@ export const TOOL_CATALOG: Record<string, { name: string; icon: string; color: s
   calendar: { name: "Google Calendar", icon: "GC", color: "#4285F4" },
   tiktok: { name: "TikTok", icon: "TT", color: "#25F4EE" },
   n8n: { name: "n8n", icon: "N8", color: "#EA4B71" },
+  blotato: { name: "Blotato", icon: "BL", color: "#FF6B35" },
 };
 
 function tools(access: Record<string, boolean>): EcosystemTool[] {
@@ -119,7 +127,7 @@ export const PEOPLE: EcosystemPerson[] = [
     sectorId: "contenu",
     initial: "J",
     since: "07/2026",
-    tools: tools({ instagram: false, whatsapp: true, gmail: true, telegram: true, drive: true, clickup: true, calendar: false, tiktok: true, n8n: false }),
+    tools: tools({ instagram: false, whatsapp: true, gmail: true, telegram: true, drive: true, clickup: true, calendar: false, tiktok: true, n8n: false, blotato: true }),
   },
   {
     id: "lea",
@@ -129,7 +137,7 @@ export const PEOPLE: EcosystemPerson[] = [
     sectorId: "contenu",
     initial: "L",
     since: "07/2026",
-    tools: tools({ instagram: false, whatsapp: true, gmail: true, telegram: true, drive: true, clickup: true, calendar: false, tiktok: true, n8n: false }),
+    tools: tools({ instagram: false, whatsapp: true, gmail: true, telegram: true, drive: true, clickup: true, calendar: false, tiktok: true, n8n: false, blotato: true }),
   },
   {
     id: "camille",
@@ -139,7 +147,7 @@ export const PEOPLE: EcosystemPerson[] = [
     sectorId: "contenu",
     initial: "C",
     since: "07/2026",
-    tools: tools({ instagram: false, whatsapp: false, gmail: true, telegram: true, drive: true, clickup: true, calendar: false, tiktok: true, n8n: false }),
+    tools: tools({ instagram: false, whatsapp: false, gmail: true, telegram: true, drive: true, clickup: true, calendar: false, tiktok: true, n8n: false, blotato: true }),
   },
   {
     id: "paul",
