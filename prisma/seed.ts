@@ -21,27 +21,30 @@ async function main() {
   });
   const agencyId = agency.id;
 
-  const teamNord = await prisma.team.create({ data: { name: "Équipe Nord", agencyId } });
-  const teamSud = await prisma.team.create({ data: { name: "Équipe Sud", agencyId } });
-  const teamEst = await prisma.team.create({ data: { name: "Équipe Est", agencyId } });
+  // Deux branches réelles de l'agence : OFM (modèles OnlyFans gérées en
+  // interne) et Marketing Agency (clients externes) — cf. le résumé
+  // écosystème envoyé par l'utilisateur.
+  const teamOfm = await prisma.team.create({ data: { name: "OFM", agencyId } });
+  const teamMarketing = await prisma.team.create({ data: { name: "Marketing Agency", agencyId } });
 
   const admin = await prisma.user.create({
     data: { name: "Angels Pillonel", email: "pillonelflorezpaco@gmail.com", role: "SUPER_ADMIN", passwordHash },
     // agencyId intentionally omitted — NULL for SUPER_ADMIN
   });
   const julien = await prisma.user.create({
-    data: { name: "Julien Marchand", email: "julien@blackcircle.agency", role: "VIDEO_EDITOR", teamId: teamNord.id, agencyId, passwordHash },
+    data: { name: "Julien Marchand", email: "julien@blackcircle.agency", role: "VIDEO_EDITOR", teamId: teamOfm.id, agencyId, passwordHash },
   });
   const lea = await prisma.user.create({
-    data: { name: "Léa Roussel", email: "lea@blackcircle.agency", role: "VIDEO_EDITOR", teamId: teamSud.id, agencyId, passwordHash },
+    data: { name: "Léa Roussel", email: "lea@blackcircle.agency", role: "VIDEO_EDITOR", teamId: teamOfm.id, agencyId, passwordHash },
   });
   const paul = await prisma.user.create({
-    data: { name: "Paul Vidal", email: "paul@blackcircle.agency", role: "ASSISTANT", teamId: teamEst.id, agencyId, passwordHash },
+    data: { name: "Paul Vidal", email: "paul@blackcircle.agency", role: "ASSISTANT", teamId: teamMarketing.id, agencyId, passwordHash },
   });
   await prisma.user.create({
-    data: { name: "Camille Ortiz", email: "camille@blackcircle.agency", role: "VIDEO_EDITOR", teamId: teamNord.id, agencyId, passwordHash },
+    data: { name: "Camille Ortiz", email: "camille@blackcircle.agency", role: "VIDEO_EDITOR", teamId: teamOfm.id, agencyId, passwordHash },
   });
   await prisma.user.create({
+    // Gère l'agence dans son ensemble — pas rattachée à une seule équipe.
     data: { name: "Sacha Ben", email: "sacha@blackcircle.agency", role: "AGENCY_MANAGER", agencyId, passwordHash },
   });
 
@@ -52,13 +55,28 @@ async function main() {
     data: { label: "Blotato Pool #2", apiKey: encryptSecret("placeholder-not-a-real-key"), capLimit: 200, agencyId },
   });
 
+  // Vraies modèles OFM (9) + vrais clients Marketing Agency (5), tels que
+  // décrits par l'utilisateur. Statuts/jours de contenu restant : encore
+  // des valeurs d'exemple tant que WF6 (Inventario Contenido) n'est pas
+  // branché sur ce dépôt.
   const modelsData = [
-    { name: "Aurora Media", teamId: teamNord.id, blotatoAccountId: blotatoPool1.id, status: "CRIT" as const, days: 2.1 },
-    { name: "Kite & Co.", teamId: teamSud.id, blotatoAccountId: blotatoPool1.id, status: "WARN" as const, days: 3.8 },
-    { name: "Studio Nova", teamId: teamNord.id, blotatoAccountId: blotatoPool1.id, status: "WARN" as const, days: 6.4 },
-    { name: "Nord Studio", teamId: teamEst.id, blotatoAccountId: blotatoPool2.id, status: "OK" as const, days: 11.2 },
-    { name: "Maison Verlan", teamId: teamSud.id, blotatoAccountId: blotatoPool2.id, status: "OK" as const, days: 9.0 },
-    { name: "Rivage Studio", teamId: teamEst.id, blotatoAccountId: blotatoPool2.id, status: "OK" as const, days: 14.6 },
+    // — OFM —
+    { name: "Britany", teamId: teamOfm.id, blotatoAccountId: blotatoPool1.id, status: "CRIT" as const, days: 2.1 },
+    { name: "Valeria", teamId: teamOfm.id, blotatoAccountId: blotatoPool1.id, status: "WARN" as const, days: 3.8 },
+    { name: "Milena", teamId: teamOfm.id, blotatoAccountId: blotatoPool1.id, status: "WARN" as const, days: 4.6 },
+    { name: "Sherlin", teamId: teamOfm.id, blotatoAccountId: blotatoPool1.id, status: "OK" as const, days: 8.2 },
+    { name: "Laura", teamId: teamOfm.id, blotatoAccountId: blotatoPool2.id, status: "OK" as const, days: 9.0 },
+    { name: "Jesuli", teamId: teamOfm.id, blotatoAccountId: blotatoPool2.id, status: "WARN" as const, days: 5.4 },
+    { name: "Shirley", teamId: teamOfm.id, blotatoAccountId: blotatoPool2.id, status: "OK" as const, days: 11.2 },
+    { name: "Viviana", teamId: teamOfm.id, blotatoAccountId: blotatoPool2.id, status: "OK" as const, days: 10.5 },
+    { name: "Sophia", teamId: teamOfm.id, blotatoAccountId: blotatoPool1.id, status: "OK" as const, days: 14.6 },
+    // — Marketing Agency (clients externes) —
+    { name: "Mike", teamId: teamMarketing.id, blotatoAccountId: blotatoPool2.id, status: "OK" as const, days: 12.0 },
+    { name: "Level Up", teamId: teamMarketing.id, blotatoAccountId: blotatoPool2.id, status: "WARN" as const, days: 6.1 },
+    { name: "COLGO", teamId: teamMarketing.id, blotatoAccountId: blotatoPool1.id, status: "OK" as const, days: 9.7 },
+    // Client Marketing Agency — homonyme volontaire de la modèle OFM "Sherlin".
+    { name: "Sherlin", teamId: teamMarketing.id, blotatoAccountId: blotatoPool1.id, status: "OK" as const, days: 13.3 },
+    { name: "Christian", teamId: teamMarketing.id, blotatoAccountId: blotatoPool2.id, status: "CRIT" as const, days: 1.4 },
   ];
 
   const models = [];
@@ -175,11 +193,11 @@ async function main() {
 
   await prisma.activityLogEntry.createMany({
     data: [
-      { eventType: "POST_SCHEDULED", message: "Publication programmée — Aurora Media — Instagram Reels", severity: "OK", modelId: models[0].id, agencyId },
-      { eventType: "VIDEO_STAGE_CHANGED", message: "Julien M. a déplacé une vidéo vers Prêt pour review — Studio Nova", severity: "WARN", modelId: models[2].id, actorId: julien.id, agencyId },
-      { eventType: "POST_FAILED", message: "Échec d'upload TikTok — Kite & Co.", severity: "CRIT", modelId: models[1].id, agencyId },
-      { eventType: "POST_PUBLISHED", message: "Rendu Remotion terminé — 3 vidéos — Maison Verlan", severity: "OK", modelId: models[4].id, agencyId },
-      { eventType: "MODEL_CREATED", message: "Nouveau model onboardé — Nord Studio", severity: "OK", modelId: models[3].id, agencyId },
+      { eventType: "POST_SCHEDULED", message: "Publication programmée — Britany — Instagram Reels", severity: "OK", modelId: models[0].id, agencyId },
+      { eventType: "VIDEO_STAGE_CHANGED", message: "Julien M. a déplacé une vidéo vers Prêt pour review — Milena", severity: "WARN", modelId: models[2].id, actorId: julien.id, agencyId },
+      { eventType: "POST_FAILED", message: "Échec d'upload TikTok — Valeria", severity: "CRIT", modelId: models[1].id, agencyId },
+      { eventType: "POST_PUBLISHED", message: "Rendu Remotion terminé — 3 vidéos — Laura", severity: "OK", modelId: models[4].id, agencyId },
+      { eventType: "MODEL_CREATED", message: "Nouveau model onboardé — Sherlin", severity: "OK", modelId: models[3].id, agencyId },
     ],
   });
 
