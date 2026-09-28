@@ -69,15 +69,23 @@ export function PersonPanel({ person, onClose }: { person: EcosystemPerson; onCl
 function ToolRow({ tool, onToggle }: { tool: EcosystemTool; onToggle: () => void }) {
   return (
     <div className="bc-eco-tool-row">
-      <div className="bc-eco-tool-icon">{tool.icon}</div>
+      <div
+        className="bc-eco-tool-icon"
+        style={{ color: tool.color, borderColor: tool.access ? tool.color : "var(--bc-border)" }}
+      >
+        {tool.icon}
+      </div>
       <span style={{ fontSize: 13, color: "var(--bc-text)" }}>{tool.name}</span>
       <button
         type="button"
         className={`bc-eco-toggle${tool.access ? " on" : ""}`}
+        style={tool.access ? { background: `${tool.color}29`, borderColor: "transparent" } : undefined}
         onClick={onToggle}
         aria-pressed={tool.access}
         aria-label={`${tool.access ? "Révoquer" : "Accorder"} l'accès à ${tool.name}`}
-      />
+      >
+        <span className="bc-eco-toggle-dot" style={tool.access ? { background: tool.color, transform: "translateX(15px)" } : undefined} />
+      </button>
     </div>
   );
 }

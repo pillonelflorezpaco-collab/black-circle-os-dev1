@@ -6,6 +6,7 @@ export type EcosystemTool = {
   id: string;
   name: string;
   icon: string; // single emoji/glyph, keeps this file dependency-free
+  color: string; // the tool's real brand color, for instant recognition
   access: boolean;
 };
 
@@ -54,19 +55,28 @@ export const AGENTS: EcosystemAgent[] = [
   { id: "wf6", name: "Inventaire Contenu", sectorId: "contenu", icon: "WF6", status: "active" },
 ];
 
+// Real brand colors — used across the ecosystem graph so each tool reads
+// instantly by color, the way the reference constellation UI does.
+export const TOOL_CATALOG: Record<string, { name: string; icon: string; color: string }> = {
+  instagram: { name: "Instagram", icon: "IG", color: "#E1306C" },
+  whatsapp: { name: "WhatsApp", icon: "WA", color: "#25D366" },
+  gmail: { name: "Gmail", icon: "GM", color: "#EA4335" },
+  telegram: { name: "Telegram", icon: "TG", color: "#29B6F6" },
+  drive: { name: "Google Drive", icon: "GD", color: "#4285F4" },
+  clickup: { name: "ClickUp", icon: "CU", color: "#7B68EE" },
+  calendar: { name: "Google Calendar", icon: "GC", color: "#4285F4" },
+  tiktok: { name: "TikTok", icon: "TT", color: "#25F4EE" },
+  n8n: { name: "n8n", icon: "N8", color: "#EA4B71" },
+};
+
 function tools(access: Record<string, boolean>): EcosystemTool[] {
-  const catalog: Record<string, { name: string; icon: string }> = {
-    instagram: { name: "Instagram", icon: "IG" },
-    whatsapp: { name: "WhatsApp", icon: "WA" },
-    gmail: { name: "Gmail", icon: "GM" },
-    telegram: { name: "Telegram", icon: "TG" },
-    drive: { name: "Google Drive", icon: "GD" },
-    clickup: { name: "ClickUp", icon: "CU" },
-    calendar: { name: "Google Calendar", icon: "GC" },
-    tiktok: { name: "TikTok", icon: "TT" },
-    n8n: { name: "n8n", icon: "N8" },
-  };
-  return Object.entries(access).map(([id, granted]) => ({ id, name: catalog[id].name, icon: catalog[id].icon, access: granted }));
+  return Object.entries(access).map(([id, granted]) => ({
+    id,
+    name: TOOL_CATALOG[id].name,
+    icon: TOOL_CATALOG[id].icon,
+    color: TOOL_CATALOG[id].color,
+    access: granted,
+  }));
 }
 
 export const PEOPLE: EcosystemPerson[] = [

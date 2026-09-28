@@ -82,8 +82,8 @@ export function EcosystemGraph() {
             </filter>
           </defs>
 
-          {/* ambient glow behind Jarvis */}
-          <circle cx={CENTER.x} cy={CENTER.y} r={220} fill="url(#eco-core-glow)" />
+          {/* ambient glow behind Jarvis (pulses gently) */}
+          <circle className="bc-eco-pulse" cx={CENTER.x} cy={CENTER.y} r={220} fill="url(#eco-core-glow)" />
 
           {/* decorative orbit rings (dotted) */}
           {ORBIT_RADII.map((r) => (
@@ -100,8 +100,8 @@ export function EcosystemGraph() {
             />
           ))}
 
-          {/* decorative outer belt of unassigned tool glyphs */}
-          <g opacity={0.9}>
+          {/* decorative outer belt of unassigned tool glyphs — real brand colors, drifts slowly */}
+          <g className="bc-eco-belt-spin" style={{ transformOrigin: `${CENTER.x}px ${CENTER.y}px` }}>
             {outerBelt.map((d, i) => {
               const rad = (d.angleDeg * Math.PI) / 180;
               const x = Math.round(CENTER.x + d.radius * Math.cos(rad));
@@ -109,13 +109,15 @@ export function EcosystemGraph() {
               if (y > HEIGHT + 20 || y < -20) return null;
               return (
                 <g key={i} transform={`translate(${x}, ${y})`} opacity={d.opacity}>
-                  <polygon
-                    points={hexPoints(d.size)}
-                    fill="var(--bc-surface-2)"
-                    stroke="var(--bc-border)"
-                    strokeWidth={0.8}
-                  />
-                  <text textAnchor="middle" dominantBaseline="central" fontSize={d.size * 0.75} fill="var(--bc-text-faint)">
+                  <polygon points={hexPoints(d.size)} fill="var(--bc-surface-2)" stroke={d.color} strokeWidth={1} strokeOpacity={0.8} />
+                  <text
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={d.size * 0.6}
+                    fontFamily="var(--font-jbmono)"
+                    fontWeight={600}
+                    fill={d.color}
+                  >
                     {d.glyph}
                   </text>
                 </g>
@@ -132,6 +134,7 @@ export function EcosystemGraph() {
               y1={CENTER.y}
               x2={pos.x}
               y2={pos.y}
+              stroke={activeSectorId === sector.id ? sector.color : undefined}
               filter={activeSectorId === sector.id ? "url(#eco-blur-tight)" : undefined}
             />
           ))}
@@ -142,6 +145,7 @@ export function EcosystemGraph() {
               <line
                 key={`leaf-link-${i}`}
                 className="bc-eco-link bc-eco-link-active"
+                stroke={activeSector.sector.color}
                 x1={activeSector.pos.x}
                 y1={activeSector.pos.y}
                 x2={leaf.x}
@@ -169,7 +173,7 @@ export function EcosystemGraph() {
                 transform={`translate(${pos.x}, ${pos.y})`}
                 onClick={() => setActiveSectorId(isActive ? null : sector.id)}
               >
-                {isActive && <circle r={30} fill={sector.color} opacity={0.28} filter="url(#eco-blur-soft)" />}
+                {isActive && <circle className="bc-eco-pulse" r={30} fill={sector.color} opacity={0.28} filter="url(#eco-blur-soft)" />}
                 <circle
                   r={22}
                   fill={isActive ? sector.color : "#0b0b0b"}
