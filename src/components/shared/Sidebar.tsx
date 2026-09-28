@@ -8,6 +8,7 @@ import { setActingAgency } from "@/lib/agencyContext";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
+  { href: "/ecosysteme", label: "Écosystème" },
   { href: "/models", label: "Models" },
   { href: "/pipeline", label: "Content Pipeline" },
   { href: "/publications", label: "Publications" },

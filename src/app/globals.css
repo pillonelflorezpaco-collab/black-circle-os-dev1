@@ -22,6 +22,7 @@
   --bc-red: #c1604a;
   --bc-blue: #7fa3c4;
   --bc-rose: #c08a9a;
+  --bc-gold: #c9a227;
   --bc-radius: 18px;
 }
 
@@ -404,3 +405,40 @@ body.bc-app {
 .bc-perm-table td:first-child { text-align: left; font-weight: 600; color: var(--bc-text); }
 .bc-perm-yes { color: var(--bc-green); }
 .bc-perm-no { color: var(--bc-text-faint); opacity: .4; }
+
+/* ---- Écosystème (graphe Jarvis / secteurs / agents / personnes) ---- */
+.bc-eco-wrap { position: relative; background: #050505; border: 1px solid var(--bc-border); border-radius: var(--bc-radius); overflow: hidden; min-height: 640px; }
+.bc-eco-wrap::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .55; background-image: radial-gradient(rgba(242, 239, 232, 0.05) 1px, transparent 1.4px); background-size: 26px 26px; }
+.bc-eco-svg { width: 100%; height: 640px; display: block; }
+.bc-eco-node-core { cursor: default; }
+.bc-eco-node-sector { cursor: pointer; transition: transform .15s ease; }
+.bc-eco-node-sector:hover { transform: scale(1.06); }
+.bc-eco-node-leaf { cursor: pointer; transition: transform .15s ease, opacity .15s ease; }
+.bc-eco-node-leaf:hover { transform: scale(1.12); }
+.bc-eco-label { font-family: var(--font-jbmono), monospace; fill: var(--bc-text-dim); pointer-events: none; }
+.bc-eco-label-core { font-family: var(--font-fraunces), serif; font-style: italic; fill: var(--bc-text); }
+.bc-eco-link { stroke: var(--bc-border); stroke-width: 1; opacity: .7; }
+.bc-eco-link-active { stroke: var(--bc-amber-dim); opacity: .9; }
+
+.bc-eco-stats { display: flex; gap: 22px; flex-wrap: wrap; padding: 14px 4px 20px; }
+.bc-eco-stat { display: flex; flex-direction: column; gap: 2px; }
+.bc-eco-stat .n { font-family: var(--font-jbmono), monospace; font-size: 17px; color: var(--bc-text); font-variant-numeric: tabular-nums; }
+.bc-eco-stat .lab { font-size: 10px; letter-spacing: .8px; text-transform: uppercase; color: var(--bc-text-faint); }
+
+.bc-eco-panel { position: fixed; top: 0; right: 0; height: 100vh; width: 360px; max-width: 92vw; background: var(--bc-surface); border-left: 1px solid var(--bc-border); z-index: 80; padding: 22px; overflow-y: auto; box-shadow: -20px 0 40px rgba(0,0,0,.5); transform: translateX(0); transition: transform .2s ease; }
+.bc-eco-panel-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 79; }
+.bc-eco-panel-close { position: absolute; top: 16px; right: 16px; background: var(--bc-surface-2); border: 1px solid var(--bc-border); color: var(--bc-text-dim); width: 28px; height: 28px; border-radius: 8px; cursor: pointer; }
+.bc-eco-panel-avatar { width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(155deg, var(--bc-amber), #7a5b28); display: flex; align-items: center; justify-content: center; font-family: var(--font-fraunces), serif; font-style: italic; font-weight: 600; font-size: 19px; color: #1a1409; margin-bottom: 12px; }
+.bc-eco-panel-name { font-family: var(--font-fraunces), serif; font-size: 17px; }
+.bc-eco-panel-role { font-family: var(--font-jbmono), monospace; font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--bc-amber); margin-top: 3px; }
+.bc-eco-panel-meta { display: flex; gap: 14px; margin: 16px 0; padding: 12px 0; border-top: 1px solid var(--bc-border); border-bottom: 1px solid var(--bc-border); }
+.bc-eco-panel-meta div { flex: 1; }
+.bc-eco-panel-meta .n { font-family: var(--font-jbmono), monospace; font-size: 15px; }
+.bc-eco-panel-meta .lab { font-size: 9.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--bc-text-faint); }
+.bc-eco-tool-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--bc-border); }
+.bc-eco-tool-row:last-child { border-bottom: none; }
+.bc-eco-tool-icon { width: 26px; height: 26px; border-radius: 7px; background: var(--bc-surface-2); display: flex; align-items: center; justify-content: center; font-family: var(--font-jbmono), monospace; font-size: 9px; color: var(--bc-text-dim); flex-shrink: 0; }
+.bc-eco-toggle { margin-left: auto; width: 34px; height: 19px; border-radius: 20px; background: var(--bc-surface-2); border: 1px solid var(--bc-border); position: relative; cursor: pointer; flex-shrink: 0; }
+.bc-eco-toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--bc-text-faint); transition: .15s; }
+.bc-eco-toggle.on { background: var(--bc-amber-glow); border-color: transparent; }
+.bc-eco-toggle.on::after { background: var(--bc-amber); transform: translateX(15px); }
