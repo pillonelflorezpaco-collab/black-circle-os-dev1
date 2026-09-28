@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import {
   SECTORS,
+  AGENTS,
+  PEOPLE,
   agentsBySector,
   peopleBySector,
   type EcosystemPerson,
@@ -11,11 +13,12 @@ import { buildOuterBelt } from "@/lib/ecosystem-decor";
 import { BRAND_ICONS } from "./BrandIcon";
 import { PersonPanel } from "./PersonPanel";
 
-const WIDTH = 900;
-const HEIGHT = 640;
+const WIDTH = 960;
+const HEIGHT = 680;
 const CENTER = { x: WIDTH / 2, y: HEIGHT / 2 - 10 };
-const SECTOR_RADIUS = 150;
-const LEAF_RADIUS = 250;
+// Scales up with the sector count so labels keep breathing room on adjacent nodes.
+const SECTOR_RADIUS = Math.max(150, 24 * SECTORS.length);
+const LEAF_RADIUS = SECTOR_RADIUS + 100;
 const LEAF_SPREAD_DEG = 46; // arc width (degrees) each sector's leaves fan across
 const ORBIT_RADII = [SECTOR_RADIUS + 40, LEAF_RADIUS + 15];
 
@@ -62,8 +65,8 @@ export function EcosystemGraph() {
     <>
       <div className="bc-eco-stats">
         <div className="bc-eco-stat"><span className="n">{SECTORS.length}</span><span className="lab">Secteurs</span></div>
-        <div className="bc-eco-stat"><span className="n">6</span><span className="lab">Agents (n8n)</span></div>
-        <div className="bc-eco-stat"><span className="n">{6}</span><span className="lab">Personnes</span></div>
+        <div className="bc-eco-stat"><span className="n">{AGENTS.length}</span><span className="lab">Agents (n8n)</span></div>
+        <div className="bc-eco-stat"><span className="n">{PEOPLE.length}</span><span className="lab">Personnes</span></div>
         <div className="bc-eco-stat"><span className="n">1</span><span className="lab">Assistant central</span></div>
       </div>
 
@@ -193,19 +196,30 @@ export function EcosystemGraph() {
           {activeSector &&
             activeAgents.map((agent, i) => {
               const pos = leaves[i];
+              const isDraft = agent.status === "draft";
               return (
                 <g
                   key={agent.id}
                   className="bc-eco-node-leaf"
                   transform={`translate(${pos.x}, ${pos.y})`}
-                  opacity={agent.status === "paused" ? 0.55 : 1}
+                  opacity={agent.status === "paused" ? 0.55 : isDraft ? 0.5 : 1}
                 >
-                  <rect x={-16} y={-16} width={32} height={32} rx={9} fill="var(--bc-surface-2)" stroke="var(--bc-border)" />
+                  <rect
+                    x={-16}
+                    y={-16}
+                    width={32}
+                    height={32}
+                    rx={9}
+                    fill="var(--bc-surface-2)"
+                    stroke="var(--bc-border)"
+                    strokeDasharray={isDraft ? "3 3" : undefined}
+                  />
                   <text textAnchor="middle" dominantBaseline="central" fontSize={9} fill="var(--bc-text-dim)" fontFamily="var(--font-jbmono)">
                     {agent.icon}
                   </text>
                   <text className="bc-eco-label" y={30} textAnchor="middle" fontSize={9.5}>
                     {agent.name}
+                    {isDraft ? " (à venir)" : ""}
                   </text>
                 </g>
               );

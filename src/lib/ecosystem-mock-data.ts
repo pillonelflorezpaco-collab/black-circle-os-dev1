@@ -44,6 +44,13 @@ export const SECTORS: EcosystemSector[] = [
   { id: "contenu", name: "Contenu", color: "var(--bc-rose)", icon: "▶" },
   { id: "communication", name: "Communication", color: "var(--bc-blue)", icon: "◍" },
   { id: "fulfillment", name: "Fulfillment & Tech", color: "var(--bc-green)", icon: "⬡" },
+  // Secteurs "à venir" — pas encore de workflow n8n réel derrière, mais on les
+  // pose déjà pour que la carte reflète toute l'entreprise (inspiré du
+  // Business Reference Model de Conducting AI, recréé nous-mêmes plutôt
+  // qu'acheté).
+  { id: "strategie", name: "Stratégie & Direction", color: "var(--bc-violet)", icon: "◇" },
+  { id: "data", name: "Data & Analytics", color: "var(--bc-teal)", icon: "▥" },
+  { id: "legal-rh", name: "Légal & RH", color: "var(--bc-slate)", icon: "⚖" },
 ];
 
 export const AGENTS: EcosystemAgent[] = [
@@ -53,6 +60,10 @@ export const AGENTS: EcosystemAgent[] = [
   { id: "wf4", name: "Sync ClickUp", sectorId: "fulfillment", icon: "WF4", status: "active" },
   { id: "wf5", name: "Résumé Diario", sectorId: "communication", icon: "WF5", status: "paused" },
   { id: "wf6", name: "Inventaire Contenu", sectorId: "contenu", icon: "WF6", status: "active" },
+  // Pas encore construits — placeholders "draft" pour les secteurs à venir.
+  { id: "wf7", name: "Reporting Stratégique", sectorId: "strategie", icon: "WF7", status: "draft" },
+  { id: "wf8", name: "Analyse Data", sectorId: "data", icon: "WF8", status: "draft" },
+  { id: "wf9", name: "Suivi Légal/RH", sectorId: "legal-rh", icon: "WF9", status: "draft" },
 ];
 
 // Real brand colors — used across the ecosystem graph so each tool reads
