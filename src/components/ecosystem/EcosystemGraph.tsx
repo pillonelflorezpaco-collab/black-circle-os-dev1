@@ -8,6 +8,7 @@ import {
   type EcosystemPerson,
 } from "@/lib/ecosystem-mock-data";
 import { buildOuterBelt } from "@/lib/ecosystem-decor";
+import { BRAND_ICONS } from "./BrandIcon";
 import { PersonPanel } from "./PersonPanel";
 
 const WIDTH = 900;
@@ -107,19 +108,16 @@ export function EcosystemGraph() {
               const x = Math.round(CENTER.x + d.radius * Math.cos(rad));
               const y = Math.round(CENTER.y + d.radius * Math.sin(rad));
               if (y > HEIGHT + 20 || y < -20) return null;
+              const Icon = BRAND_ICONS[d.iconId];
+              const iconSize = d.size * 0.85;
               return (
                 <g key={i} transform={`translate(${x}, ${y})`} opacity={d.opacity}>
                   <polygon points={hexPoints(d.size)} fill="var(--bc-surface-2)" stroke={d.color} strokeWidth={1} strokeOpacity={0.8} />
-                  <text
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fontSize={d.size * 0.6}
-                    fontFamily="var(--font-jbmono)"
-                    fontWeight={600}
-                    fill={d.color}
-                  >
-                    {d.glyph}
-                  </text>
+                  {Icon && (
+                    <g transform={`translate(${-iconSize / 2}, ${-iconSize / 2})`}>
+                      <Icon color={d.color} size={iconSize} />
+                    </g>
+                  )}
                 </g>
               );
             })}

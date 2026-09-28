@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { sectorById, type EcosystemPerson, type EcosystemTool } from "@/lib/ecosystem-mock-data";
+import { BrandIcon } from "./BrandIcon";
 
 export function PersonPanel({ person, onClose }: { person: EcosystemPerson; onClose: () => void }) {
   const [tools, setTools] = useState<EcosystemTool[]>(person.tools);
@@ -71,9 +72,9 @@ function ToolRow({ tool, onToggle }: { tool: EcosystemTool; onToggle: () => void
     <div className="bc-eco-tool-row">
       <div
         className="bc-eco-tool-icon"
-        style={{ color: tool.color, borderColor: tool.access ? tool.color : "var(--bc-border)" }}
+        style={{ borderColor: tool.access ? tool.color : "var(--bc-border)" }}
       >
-        {tool.icon}
+        <BrandIcon id={tool.id} color={tool.color} size={14} />
       </div>
       <span style={{ fontSize: 13, color: "var(--bc-text)" }}>{tool.name}</span>
       <button

@@ -4,25 +4,23 @@
 // data behind it, but real brand colors so it reads as an actual tool pool
 // rather than abstract confetti.
 
-export type DecorGlyph = { glyph: string; color: string; angleDeg: number; radius: number; size: number; opacity: number };
+export type DecorGlyph = { iconId: string; color: string; angleDeg: number; radius: number; size: number; opacity: number };
 
-const DECOR_TOOLS: { glyph: string; color: string }[] = [
-  { glyph: "S", color: "#4A154B" }, // Slack
-  { glyph: "N", color: "#EDEDED" }, // Notion
-  { glyph: "M", color: "#EA4335" }, // Gmail
-  { glyph: "▲", color: "#000000" }, // Vercel/X-ish mark
-  { glyph: "X", color: "#F2EFE8" }, // X
-  { glyph: "R", color: "#635BFF" }, // Stripe-ish
-  { glyph: "IG", color: "#E1306C" }, // Instagram
-  { glyph: "TT", color: "#25F4EE" }, // TikTok
-  { glyph: "YT", color: "#FF0000" }, // YouTube
-  { glyph: "WA", color: "#25D366" }, // WhatsApp
-  { glyph: "TG", color: "#29B6F6" }, // Telegram
-  { glyph: "GD", color: "#4285F4" }, // Drive
-  { glyph: "CU", color: "#7B68EE" }, // ClickUp
-  { glyph: "LI", color: "#0A66C2" }, // LinkedIn
-  { glyph: "GC", color: "#34A853" }, // Calendar
-  { glyph: "N8", color: "#EA4B71" }, // n8n
+const DECOR_TOOLS: { iconId: string; color: string }[] = [
+  { iconId: "slack", color: "#4A154B" },
+  { iconId: "notion", color: "#EDEDED" },
+  { iconId: "gmail", color: "#EA4335" },
+  { iconId: "x", color: "#F2EFE8" },
+  { iconId: "instagram", color: "#E1306C" },
+  { iconId: "tiktok", color: "#25F4EE" },
+  { iconId: "youtube", color: "#FF0000" },
+  { iconId: "whatsapp", color: "#25D366" },
+  { iconId: "telegram", color: "#29B6F6" },
+  { iconId: "drive", color: "#4285F4" },
+  { iconId: "clickup", color: "#7B68EE" },
+  { iconId: "linkedin", color: "#0A66C2" },
+  { iconId: "calendar", color: "#34A853" },
+  { iconId: "n8n", color: "#EA4B71" },
 ];
 
 function seeded(i: number) {
@@ -39,6 +37,6 @@ export function buildOuterBelt(count: number): DecorGlyph[] {
     const size = Math.round((9 + seeded(i * 5 + 4) * 5) * 10) / 10;
     const opacity = Math.round((0.35 + seeded(i * 13 + 5) * 0.35) * 100) / 100;
     const tool = DECOR_TOOLS[i % DECOR_TOOLS.length];
-    return { glyph: tool.glyph, color: tool.color, angleDeg, radius, size, opacity };
+    return { iconId: tool.iconId, color: tool.color, angleDeg, radius, size, opacity };
   });
 }
