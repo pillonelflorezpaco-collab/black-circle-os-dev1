@@ -15,8 +15,11 @@ boundary, exactly like the `n8n` tool already is.
 
 ```
 Agent → Task proposal (social_media_management, MEDIUM risk)
-      → existing risk evaluation (unmodified: MEDIUM → no approval today)
-      → Execution Engine (createExecutionForTask, unmodified precondition checks)
+      → approval policy override: this capability always requires approval,
+        regardless of risk (approvalPolicy.ts)
+      → Execution Engine (createExecutionForTask) re-checks for an APPROVED
+        Approval on this exact task before dispatching — never trusts the
+        caller or the Task's own status
       → blotatoAdapter.ts (the ONLY module allowed to call BlotatoClient)
       → dryRunPublish() — validates everything, builds the exact request, NEVER sends it
 ```
@@ -69,17 +72,18 @@ caller-supplied workflow URL.
 
 `publishReal()` exists and is tested (mocked success, mocked API error,
 mocked timeout) but **is never invoked by `executionService.ts` or any
-other production code path**. Wiring it in requires a human decision this
-phase does not make:
-
-**Should `social_media_management` (MEDIUM risk) continue to require no
-approval once it can cause a real, public, external side effect?** Today's
-unmodified policy (`approvalPolicy.ts`) says MEDIUM never requires approval.
-Enabling real publishing under that unchanged policy would mean a real post
-could go live without a human decision point — this phase deliberately
-stops short of that, per the explicit instruction not to reinterpret MEDIUM
-risk silently. Until that policy question is answered, `publishReal()`
-remains implemented-but-dormant, reviewable and testable in isolation.
+other production code path**. A capability-specific approval override
+already exists — `social_media_management` always requires an `APPROVED`
+Approval regardless of risk level (`CAPABILITIES_REQUIRING_APPROVAL_REGARDLESS_OF_RISK`
+in `approvalPolicy.ts`) — but that alone does not make wiring `publishReal()`
+in automatic. Enabling real publishing is a separate, explicit decision
+still pending: it makes an approval-gated task cause a real, public,
+external side effect for the first time in this system, and that step
+deliberately requires its own review rather than happening as a byproduct
+of an approval-policy change made for a different reason. Until that
+decision is made, `publishReal()` remains implemented-but-dormant,
+reviewable and testable in isolation, and MUST NOT be imported or called
+by `executionService.ts` — enforced by a dedicated static guard test.
 
 ## Idempotency
 
@@ -137,23 +141,26 @@ use for their own result payload.
 
 ## Tests
 
-35 tests in `src/execution/__tests__/run.ts` (up from 15) cover: valid
-resolution, nonexistent/cross-agency Post (no leak), unsupported source,
-inactive account, missing credential, missing content/media, dry-run never
-touching the API key, mocked `publishReal()` success/error/timeout, full
-Execution Engine dispatch (SUCCEEDED synchronously, correct Events, `fetch`
-never called), missing-`postId` failure, cross-agency `postId` failure,
-duplicate-dispatch idempotency, and three static guards (Agent never
-imports the adapter/client/credential functions; `executionService.ts`
-never imports `BlotatoClient`/`decryptSecret` directly; the adapter never
-logs the key and accepts no caller-supplied URL/method).
+`src/execution/__tests__/run.ts` covers: valid resolution, nonexistent/
+cross-agency Post (no leak), unsupported source, inactive account, missing
+credential, missing content/media, dry-run never touching the API key,
+mocked `publishReal()` success/error/timeout, full Execution Engine dispatch
+(SUCCEEDED synchronously, correct Events, `fetch` never called),
+missing-`postId` failure, cross-agency `postId` failure, duplicate-dispatch
+idempotency, and static guards (Agent never imports the adapter/client/
+credential functions; `executionService.ts` never imports `BlotatoClient`/
+`decryptSecret` directly, and imports `dryRunPublish` rather than
+`publishReal` — locking in that dry-run, not real publishing, is the
+intended v0.1 dispatch; the adapter never logs the key and accepts no
+caller-supplied URL/method).
 
 ## Human decision still required
 
-**Real public publishing is NOT enabled.** Before `publishReal()` can be
-wired into `executionService.ts`, someone must decide: does
-`social_media_management` need a MEDIUM-risk approval requirement (a
-capability-specific policy, or a global MEDIUM-risk policy change), or is
-the current no-approval-for-MEDIUM policy intentional even for a real
-external side effect? This phase implements everything up to that decision
-point and stops there, as instructed.
+**Real public publishing is NOT enabled.** A capability-specific approval
+override already exists for `social_media_management` (see
+`approvalPolicy.ts`), but wiring `publishReal()` into `executionService.ts`
+is a separate, explicit decision — one this phase deliberately stops short
+of, since it is the first point at which an approval-gated task would cause
+a real, public, external side effect. This phase implements and tests the
+real-publish path in isolation and keeps it unreachable from production
+until that decision is made.

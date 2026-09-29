@@ -541,6 +541,12 @@ async function main() {
       assert.ok(!executionServiceSource.includes("decryptSecret"), "executionService.ts must never touch credential decryption directly");
     });
 
+    await test("static guard: executionService.ts dispatches via dryRunPublish, not publishReal (real publishing must not be reachable in production)", async () => {
+      const source = fs.readFileSync(path.join(__dirname, "..", "executionService.ts"), "utf-8");
+      assert.ok(/import\s*\{\s*dryRunPublish\s*\}\s*from\s*"\.\/blotatoAdapter"/.test(source), "executionService.ts must import dryRunPublish from blotatoAdapter");
+      assert.ok(!/import\s*\{[^}]*publishReal[^}]*\}\s*from\s*"\.\/blotatoAdapter"/.test(source), "executionService.ts must not import publishReal — real publishing requires a separate, explicit enablement decision this phase does not make");
+    });
+
     await test("static guard: blotatoAdapter.ts never logs the API key and never accepts an arbitrary URL/method", async () => {
       const source = fs.readFileSync(path.join(__dirname, "..", "blotatoAdapter.ts"), "utf-8");
       assert.ok(!/console\.(log|error|warn)\([^)]*apiKey/i.test(source), "must never log the API key");

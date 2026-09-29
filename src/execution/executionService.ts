@@ -14,7 +14,9 @@ import type { IntentKey } from "@/jarvis/types";
 // v0.1a supported exactly one tool ("n8n", the zero-side-effect test
 // adapter). v0.1's social-media-execution phase adds "blackos_api" —
 // resolved DRY_RUN ONLY via blotatoAdapter.dryRunPublish(); real publishing
-// is implemented in that module but not wired in here — see
+// (blotatoAdapter.publishReal()) is implemented and unit-tested but
+// deliberately NOT wired in here — enabling it is a separate, explicit
+// decision, not something this dispatch makes on its own. See
 // docs/social-media-execution.md "Real publish boundary". Any other tool
 // key is still correctly reported as unsupported rather than silently
 // attempted — see docs/execution-engine.md §6.
@@ -115,7 +117,7 @@ export async function createExecutionForTask(taskId: string, actor: Actor): Prom
   await executionStepRepository.create({
     execution: { connect: { id: execution.id } },
     sequence: 1,
-    kind: toolKey === "blackos_api" ? "BLOTATO_DRY_RUN" : "N8N_WORKFLOW",
+    kind: toolKey === "blackos_api" ? "BLOTATO_PUBLISH" : "N8N_WORKFLOW",
     status: "PENDING",
     input: { executionId: execution.id, taskId: task.id, idempotencyKey, agencyId: task.agencyId, capabilityKey: task.capabilityKey },
   });

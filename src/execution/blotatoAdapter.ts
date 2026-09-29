@@ -12,9 +12,9 @@ import type { BlotatoCreatePostRequest } from "@/lib/blotato/types";
  * only dryRunPublish() is wired into executionService.ts's dispatch. publishReal()
  * exists, is unit-tested against a mocked Blotato response, and is never called
  * from any production code path in this phase — wiring it in requires a
- * separate, explicit human authorization decision (the MEDIUM-risk approval
- * policy question), which this phase does not resolve. See the "Real publish
- * boundary" section of that doc for exactly what's missing.
+ * separate, explicit human authorization decision, which this phase does not
+ * make. See the "Real publish boundary" section of that doc for exactly
+ * what's missing.
  */
 
 const REQUEST_TIMEOUT_MS = 10_000;
