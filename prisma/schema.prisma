@@ -898,3 +898,59 @@ model ExecutionStep {
   @@unique([executionId, sequence])
   @@index([executionId])
 }
+
+// ─────────────────────────────────────────────────────────────
+// JARVIS ORCHESTRATOR v0.1a — see docs/orchestrator.md.
+//
+// OrchestrationRecord is a thin coordination/index row: it tracks WHICH
+// Task/Approval/Execution a given end-user request produced and what
+// coordination state that request has reached. It deliberately does NOT
+// duplicate any mutable state that Task/Approval/Execution already own
+// (status, risk, result, etc.) — those tables remain the only source of
+// truth for their own domain. Querying "is this done yet" always means
+// joining out to the referenced Task/Approval/Execution, never reading a
+// cached copy here.
+//
+// requestId is the idempotency key: @@unique([agencyId, requestId]) is the
+// structural guard against a caller's retried/duplicated request creating a
+// second orchestration — the same pattern as Task.requestId and
+// Execution.idempotencyKey.
+// ─────────────────────────────────────────────────────────────
+
+enum OrchestrationState {
+  REQUESTED
+  PLANNING
+  TASK_CREATED
+  AWAITING_APPROVAL
+  EXECUTING
+  COMPLETED
+  FAILED
+  NEEDS_CLARIFICATION
+  REJECTED
+}
+
+model OrchestrationRecord {
+  id       String @id @default(cuid())
+  agencyId String
+
+  // Idempotency key — optional because a caller isn't required to supply one
+  // (mirrors Task.requestId), but when present it is unique per agency.
+  requestId String?
+
+  state         OrchestrationState @default(REQUESTED)
+  failureReason String?            @db.Text
+
+  // References only — never a copy of the referenced row's mutable fields.
+  taskId      String?
+  approvalId  String?
+  executionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([agencyId, requestId])
+  @@index([agencyId])
+  @@index([taskId])
+  @@index([approvalId])
+  @@index([executionId])
+}

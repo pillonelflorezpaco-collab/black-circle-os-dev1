@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:jarvis": "tsx src/jarvis/__tests__/run.ts",
-    "test:execution": "tsx src/execution/__tests__/run.ts"
+    "test:execution": "tsx src/execution/__tests__/run.ts",
+    "test:orchestrator": "tsx src/orchestrator/__tests__/run.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
