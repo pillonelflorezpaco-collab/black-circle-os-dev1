@@ -10,6 +10,16 @@ import type { Role } from "@prisma/client";
  * everywhere else (Route Handlers, Server Components, Server Actions).
  */
 export const authConfig = {
+  // Required for self-hosted (non-Vercel) deployments: Auth.js v5 refuses to
+  // trust the incoming request's Host header by default, and throws
+  // UntrustedHost from inside the auth() call middleware.ts wraps — which,
+  // uncaught, makes Next.js fail OPEN (serves the route, skips the
+  // redirect-if-unauthenticated logic below) instead of blocking it. This
+  // was the root cause of every dashboard route being reachable without a
+  // session. Safe here because agency/role scoping never derives from the
+  // Host header — only from the verified JWT — so trusting the host cannot
+  // widen who a token authenticates as.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [],

@@ -18,6 +18,25 @@ const NAV_ITEMS = [
   { href: "/rapports", label: "Rapports" },
 ];
 
+// BlackOS / Jarvis layer — Command Center, Tasks, Approvals and Events have
+// real pages. Departments and Agents both live on the same /ecosysteme graph
+// (there's no separate Departments-only or Agents-only view), so V0.2
+// collapses what used to be two nav entries pointing at the same page into
+// one honestly-named "Ecosystem" entry instead of pretending they're
+// distinct destinations. Accounts/Services have no page yet (Task Engine
+// only tracks entityType="MODEL" so far) and are shown disabled rather than
+// as dead links.
+const BLACKOS_NAV_ITEMS: { href: string | null; label: string }[] = [
+  { href: "/command-center", label: "Command Center" },
+  { href: "/jarvis", label: "Jarvis" },
+  { href: "/ecosysteme", label: "Ecosystem" },
+  { href: "/tasks", label: "Tasks" },
+  { href: "/approvals", label: "Approvals" },
+  { href: null, label: "Accounts" },
+  { href: null, label: "Services" },
+  { href: "/events", label: "Events" },
+];
+
 type ModelOption = { id: string; name: string };
 type AgencyOption = { id: string; name: string };
 
@@ -124,6 +143,14 @@ export function Sidebar({
           </div>
         </div>
 
+        <div className="bc-search-placeholder" title="Global search — not implemented yet">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.3">
+            <circle cx="5.5" cy="5.5" r="4" />
+            <path d="M8.5 8.5 12 12" />
+          </svg>
+          Search — coming soon
+        </div>
+
         <div style={{ position: "relative", marginBottom: 18 }} ref={menuRef}>
           <button
             type="button"
@@ -197,6 +224,27 @@ export function Sidebar({
             )}
           </div>
         )}
+
+        <div className="bc-nav-label">BlackOS · Jarvis</div>
+        <nav className="bc-nav">
+          {BLACKOS_NAV_ITEMS.map((item) => {
+            if (!item.href) {
+              return (
+                <span key={item.label} className="bc-nav-btn disabled" title="Bientôt disponible">
+                  <span className="dot" />
+                  {item.label}
+                </span>
+              );
+            }
+            const active = pathname === item.href;
+            return (
+              <Link key={item.label} href={item.href} className={`bc-nav-btn${active ? " active" : ""}`}>
+                <span className="dot" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
 
         <div className="bc-nav-label">Espace de travail</div>
         <nav className="bc-nav">

@@ -126,6 +126,101 @@ enum AgencyStatus {
   SUSPENDED
 }
 
+// Task Engine v0.1 — planning/persistence only, no execution transitions yet.
+// Jarvis may currently only create tasks in PLANNED; the rest of the
+// lifecycle is modeled so a future execution phase doesn't need a migration.
+enum TaskStatus {
+  PLANNED
+  READY
+  IN_PROGRESS
+  BLOCKED
+  WAITING_APPROVAL
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TaskSource {
+  JARVIS
+  HUMAN
+  SYSTEM
+}
+
+// Approval Engine v0.1 — records a human decision, never executes anything.
+// See docs/approval-engine.md.
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+// Execution Engine v0.1 — see docs/execution-engine.md. Proves the
+// infrastructure only: one test adapter workflow, no retries, no timeout
+// sweep, no real business side effects.
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  AWAITING_CALLBACK
+  SUCCEEDED
+  FAILED
+  TIMED_OUT
+  CANCELLED
+}
+
+enum ExecutionStepStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+// Generic online/offline status shared by DeviceServer and Device — kept
+// separate from ModelStatus/ActivitySeverity (OK/WARN/CRIT) because device
+// connectivity is a different axis (reachable vs. content-health).
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  DEGRADED
+  DISABLED
+  UNKNOWN
+}
+
+enum DeviceType {
+  IPHONE
+  ANDROID
+  DESKTOP
+  OTHER
+}
+
+// Generic system event log for device/account/agent/workflow lifecycle
+// events — deliberately separate from ActivityLogEntry (which is the
+// human-facing dashboard feed) since this is meant to be machine-oriented
+// and open-ended (future device heartbeats, agent state changes, etc.).
+enum SystemEventType {
+  DEVICE_CONNECTED
+  DEVICE_DISCONNECTED
+  ACCOUNT_CONNECTED
+  ACCOUNT_DISCONNECTED
+  AGENT_ENABLED
+  AGENT_DISABLED
+  WORKFLOW_STARTED
+  WORKFLOW_COMPLETED
+  WORKFLOW_FAILED
+  TASK_CREATED
+  TASK_APPROVAL_REQUESTED
+  TASK_APPROVED
+  TASK_REJECTED
+}
+
 // ─────────────────────────────────────────────────────────────
 // AGENCIES (multi-tenant boundary)
 // ─────────────────────────────────────────────────────────────
@@ -150,6 +245,12 @@ model Agency {
   platformConnections PlatformConnection[]
   mediaAssets         MediaAsset[]
   engineApiKeys       EngineApiKey[]
+  deviceServers       DeviceServer[]
+  devices             Device[]
+  events              Event[]
+  tasks               Task[]
+  approvals           Approval[]
+  executions          Execution[]
 
   @@index([slug])
 }
@@ -179,6 +280,10 @@ model User {
   activityLogEntries ActivityLogEntry[] @relation("ActivityActor")
   generatedReports   Report[]           @relation("ReportGeneratedBy")
   modelAssignments   ModelAssignment[]
+  assignedDevices    Device[]           @relation("DeviceAssignedEmployee")
+  requestedApprovals Approval[]         @relation("ApprovalRequestedBy")
+  decidedApprovals   Approval[]         @relation("ApprovalDecidedBy")
+  requestedExecutions Execution[]       @relation("ExecutionRequestedBy")
 
   @@index([teamId])
   @@index([agencyId])
@@ -274,6 +379,7 @@ model Model {
   links               ModelLink[]
   assignments         ModelAssignment[]
   platformConnections PlatformConnection[]
+  assignedDevices     Device[]
 
   @@index([blotatoAccountId])
   @@index([teamId])
@@ -328,12 +434,18 @@ model SocialAccount {
   blotatoAccountRef    String? // Blotato's own per-platform accountId (target.accountId) — only set when source = BLOTATO
   displayName          String?
   isActive             Boolean             @default(true)
+  // Optional link to the physical device this account is currently posting
+  // from (e.g. an iPhone running Instagram) — null until device infrastructure
+  // is actually assigned; posting itself is unaffected by this field today.
+  assignedDeviceId     String?
+  assignedDevice       Device?             @relation(fields: [assignedDeviceId], references: [id])
   createdAt            DateTime            @default(now())
 
   posts Post[]
 
   @@unique([modelId, platform])
   @@index([blotatoAccountId])
+  @@index([assignedDeviceId])
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -540,4 +652,249 @@ model Report {
   completedAt   DateTime?
 
   @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// DEVICE INFRASTRUCTURE (foundation only — no device-control commands,
+// no credential storage, no automation. See docs/device-infrastructure.md
+// for the architectural intent: a future physical machine at the agency's
+// office/home that manages a pool of physical devices (iPhones, Android),
+// reported here purely as inventory/status for BlackOS to read and assign.)
+// ─────────────────────────────────────────────────────────────
+
+model DeviceServer {
+  id            String       @id @default(cuid())
+  name          String
+  hostname      String?
+  status        DeviceStatus @default(UNKNOWN)
+  location      String?
+  lastHeartbeat DateTime?
+  capabilities  Json? // freeform capability flags, e.g. { "maxDevices": 50 }
+  agencyId      String
+  agency        Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  devices Device[]
+  events  Event[]
+
+  @@index([agencyId])
+  @@index([status])
+}
+
+model Device {
+  id                 String       @id @default(cuid())
+  deviceServerId     String
+  deviceServer       DeviceServer @relation(fields: [deviceServerId], references: [id], onDelete: Cascade)
+  name               String
+  type               DeviceType   @default(OTHER)
+  modelLabel         String? // manufacturer/model string, e.g. "iPhone 13 mini" — distinct from the `Model` entity below
+  status             DeviceStatus @default(UNKNOWN)
+  serialRef          String? // serial number or other physical reference — never a credential
+  assignedModelId    String? // the talent/`Model` this device currently represents on social platforms
+  assignedModel      Model?       @relation(fields: [assignedModelId], references: [id])
+  assignedEmployeeId String? // the employee responsible for this device day-to-day
+  assignedEmployee   User?        @relation("DeviceAssignedEmployee", fields: [assignedEmployeeId], references: [id])
+  capabilities       Json?
+  lastHeartbeat      DateTime?
+  agencyId           String
+  agency             Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  socialAccounts SocialAccount[]
+  events         Event[]
+
+  @@index([deviceServerId])
+  @@index([assignedModelId])
+  @@index([assignedEmployeeId])
+  @@index([agencyId])
+  @@index([status])
+}
+
+// Generic append-only event log for device/account/agent/workflow lifecycle
+// — the machine-oriented counterpart to ActivityLogEntry. Nothing writes to
+// this table yet; it exists so the shape is settled before any producer
+// (device heartbeats, future Jarvis agents) is built.
+model Event {
+  id             String          @id @default(cuid())
+  type           SystemEventType
+  message        String?
+  deviceServerId String?
+  deviceServer   DeviceServer?   @relation(fields: [deviceServerId], references: [id])
+  deviceId       String?
+  device         Device?         @relation(fields: [deviceId], references: [id])
+  metadata       Json?
+  agencyId       String
+  agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+
+  @@index([agencyId, createdAt])
+  @@index([deviceServerId])
+  @@index([deviceId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// TASK ENGINE v0.1 — planning/persistence only (see docs/task-engine.md).
+// Jarvis's persistent representation of work: created only via
+// src/jarvis/taskService.ts from an already-resolved Jarvis orchestration
+// plan, never by guessing values independently. executionAllowed is always
+// false in this phase — no execution transition exists yet.
+// ─────────────────────────────────────────────────────────────
+
+model Task {
+  id        String       @id @default(cuid())
+  agencyId  String
+  agency    Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  title     String
+  objective String       @db.Text
+  status    TaskStatus   @default(PLANNED)
+  priority  TaskPriority @default(NORMAL)
+  source    TaskSource
+
+  // Graph references (Neo4j is the source of truth for these — never
+  // duplicated as Postgres foreign keys, see docs/task-engine.md).
+  agentKey       String?
+  capabilityKey  String?
+  departmentKey  String?
+
+  // Generic entity context — deliberately String/String rather than a
+  // polymorphic Prisma relation (Model is the only supported entityType
+  // in this phase; see docs/task-engine.md).
+  entityType String?
+  entityId   String?
+
+  riskLevel        String? // "LOW" | "MEDIUM" | "HIGH", as resolved by Jarvis Core at planning time
+  executionAllowed Boolean @default(false)
+
+  // Future delegation (parent → child tasks) — data model only, no
+  // automatic decomposition implemented yet.
+  parentTaskId String?
+  parentTask   Task?   @relation("TaskChildren", fields: [parentTaskId], references: [id])
+  childTasks   Task[]  @relation("TaskChildren")
+
+  // Placeholder for future request-level idempotency (see docs/task-engine.md
+  // §13) — not yet enforced beyond the unique index below.
+  requestId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  approvals  Approval[]
+  executions Execution[]
+
+  @@unique([agencyId, requestId])
+  @@index([agencyId, status])
+  @@index([parentTaskId])
+  @@index([entityType, entityId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// APPROVAL ENGINE v0.1 — records a human decision only (see
+// docs/approval-engine.md). Never triggers execution: there is no code path
+// anywhere that reacts to Approval.status = APPROVED by calling n8n, an
+// external API, or transitioning a Task into IN_PROGRESS/COMPLETED.
+// One active PENDING approval per task is enforced at the database level —
+// see the partial unique index added by hand in this model's migration
+// (Prisma's schema language has no native partial-unique-index syntax).
+// ─────────────────────────────────────────────────────────────
+
+model Approval {
+  id       String         @id @default(cuid())
+  agencyId String
+  agency   Agency         @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  taskId   String
+  task     Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  status   ApprovalStatus @default(PENDING)
+  riskLevel String // snapshot of the risk level that triggered this approval, "LOW" | "MEDIUM" | "HIGH"
+
+  requestedById String
+  requestedBy   User   @relation("ApprovalRequestedBy", fields: [requestedById], references: [id])
+  decidedById   String?
+  decidedBy     User?   @relation("ApprovalDecidedBy", fields: [decidedById], references: [id])
+
+  reason       String? @db.Text // why approval was required (from the centralized policy module)
+  decisionNote String? @db.Text // optional note from the approver/rejecter
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  decidedAt DateTime?
+
+  @@index([agencyId])
+  @@index([taskId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────
+// EXECUTION ENGINE v0.1 — see docs/execution-engine.md.
+//
+// One Execution = one attempt to carry out a Task that has reached READY
+// (and, for HIGH risk, has an APPROVED Approval). Retries are new Execution
+// rows (attempt+1), never a mutation of a prior row — keeps the audit trail
+// intact. toolKey/workflowRef are snapshots resolved once at creation time
+// from the Neo4j graph (src/jarvis/graphResolver.ts) — never re-resolved
+// mid-flight, and never trusted from the caller.
+//
+// idempotencyKey is REQUIRED (unlike Task.requestId, which is optional) —
+// Execution has real side effects, so it cannot afford the same honest gap.
+// @@unique([taskId, idempotencyKey]) is the structural duplicate-execution
+// guard; the partial-unique-index trick used for Approval isn't needed here
+// since every Execution row participates in the constraint, not just a
+// "PENDING" subset.
+// ─────────────────────────────────────────────────────────────
+
+model Execution {
+  id       String          @id @default(cuid())
+  agencyId String
+  agency   Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  taskId   String
+  task     Task            @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  status   ExecutionStatus @default(PENDING)
+
+  toolKey     String // snapshot from Neo4j Tool.key at creation time, e.g. "n8n"
+  workflowRef String // e.g. an n8n webhook path — resolved once, stored, never re-resolved mid-flight
+
+  requestedById String
+  requestedBy   User   @relation("ExecutionRequestedBy", fields: [requestedById], references: [id])
+
+  idempotencyKey String // required — see model comment above
+  attempt        Int    @default(1)
+
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  result       Json? // ExecutionResult shape: { success, summary, externalRef?, verifiedAt? }
+  failureReason String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  steps ExecutionStep[]
+
+  @@unique([taskId, idempotencyKey])
+  @@index([agencyId])
+  @@index([taskId])
+  @@index([status])
+}
+
+// Exactly one ExecutionStep is created per Execution in v0.1 (kind:
+// N8N_WORKFLOW, sequence: 1) — the shape supports multiple steps so a future
+// multi-step execution phase doesn't need a schema change, but nothing
+// creates more than one today.
+model ExecutionStep {
+  id          String              @id @default(cuid())
+  executionId String
+  execution   Execution           @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  sequence    Int
+  kind        String // "N8N_WORKFLOW" today; other kinds are future work, not invented here
+  status      ExecutionStepStatus @default(PENDING)
+  input       Json?
+  output      Json?
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([executionId, sequence])
+  @@index([executionId])
 }

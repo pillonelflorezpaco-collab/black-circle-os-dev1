@@ -1,73 +1,91 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  SECTORS,
-  AGENTS,
-  PEOPLE,
-  agentsBySector,
-  peopleBySector,
-  type EcosystemPerson,
-} from "@/lib/ecosystem-mock-data";
+import type { OrganizationAgent, OrganizationGraphData } from "@/types/organization";
 import { buildOuterBelt } from "@/lib/ecosystem-decor";
 import { BRAND_ICONS } from "./BrandIcon";
-import { PersonPanel } from "./PersonPanel";
+import { AgentPanel } from "./AgentPanel";
 
 const WIDTH = 960;
 const HEIGHT = 680;
 const CENTER = { x: WIDTH / 2, y: HEIGHT / 2 - 10 };
-// Scales up with the sector count so labels keep breathing room on adjacent nodes.
-const SECTOR_RADIUS = Math.max(150, 24 * SECTORS.length);
-const LEAF_RADIUS = SECTOR_RADIUS + 100;
-const LEAF_SPREAD_DEG = 46; // arc width (degrees) each sector's leaves fan across
-const ORBIT_RADII = [SECTOR_RADIUS + 40, LEAF_RADIUS + 15];
 
-function sectorPosition(index: number, total: number) {
-  const angle = (index / total) * 2 * Math.PI - Math.PI / 2;
-  return {
-    x: CENTER.x + SECTOR_RADIUS * Math.cos(angle),
-    y: CENTER.y + SECTOR_RADIUS * Math.sin(angle),
-    angle,
-  };
+// Same 9-color / 9-icon palette the mock data used for its 9 sectors —
+// Neo4j Department nodes don't store a color/icon (see docs/ecosystem-real-data.md),
+// so this is a stable positional palette, not semantic data. Assigned by
+// sorted department key, so a given department keeps the same look across loads.
+const DEPARTMENT_COLORS = ["var(--bc-amber)", "var(--bc-red)", "var(--bc-gold)", "var(--bc-rose)", "var(--bc-blue)", "var(--bc-green)", "var(--bc-violet)", "var(--bc-teal)", "var(--bc-slate)"];
+const DEPARTMENT_ICONS = ["◆", "▲", "€", "▶", "◍", "⬡", "◇", "▥", "⚖"];
+
+const AGENT_TYPE_SHORT: Record<string, string> = { ORCHESTRATOR: "ORC", MANAGER: "MGR", SPECIALIST: "SPC" };
+
+function agentGlyph(type: string) {
+  return AGENT_TYPE_SHORT[type] ?? type.slice(0, 3).toUpperCase();
 }
 
-function leafPositions(centerAngle: number, count: number) {
+function sectorPosition(index: number, total: number, radius: number) {
+  const angle = (index / total) * 2 * Math.PI - Math.PI / 2;
+  return { x: CENTER.x + radius * Math.cos(angle), y: CENTER.y + radius * Math.sin(angle), angle };
+}
+
+function leafPositions(centerAngle: number, count: number, radius: number, spreadDeg: number) {
   if (count === 0) return [];
-  const spread = (LEAF_SPREAD_DEG * Math.PI) / 180;
+  const spread = (spreadDeg * Math.PI) / 180;
   return Array.from({ length: count }, (_, i) => {
     const t = count === 1 ? 0 : i / (count - 1) - 0.5;
     const angle = centerAngle + t * spread;
-    return {
-      x: CENTER.x + LEAF_RADIUS * Math.cos(angle),
-      y: CENTER.y + LEAF_RADIUS * Math.sin(angle),
-    };
+    return { x: CENTER.x + radius * Math.cos(angle), y: CENTER.y + radius * Math.sin(angle) };
   });
 }
 
-export function EcosystemGraph() {
-  const [activeSectorId, setActiveSectorId] = useState<string | null>(null);
-  const [activePerson, setActivePerson] = useState<EcosystemPerson | null>(null);
+export function EcosystemGraph({ graph }: { graph: OrganizationGraphData }) {
+  const [activeDeptKey, setActiveDeptKey] = useState<string | null>(null);
+  const [activeAgent, setActiveAgent] = useState<OrganizationAgent | null>(null);
+
+  const sectorRadius = Math.max(150, 24 * graph.departments.length);
+  const leafRadius = sectorRadius + 100;
+  const leafSpreadDeg = 46;
+  const orbitRadii = [sectorRadius + 40, leafRadius + 15];
 
   const sectorNodes = useMemo(
-    () => SECTORS.map((sector, i) => ({ sector, pos: sectorPosition(i, SECTORS.length) })),
-    []
+    () =>
+      graph.departments.map((dept, i) => ({
+        dept,
+        pos: sectorPosition(i, graph.departments.length, sectorRadius),
+        color: DEPARTMENT_COLORS[i % DEPARTMENT_COLORS.length],
+        icon: DEPARTMENT_ICONS[i % DEPARTMENT_ICONS.length],
+      })),
+    [graph.departments, sectorRadius],
   );
   const outerBelt = useMemo(() => buildOuterBelt(34), []);
 
-  const activeSector = sectorNodes.find((s) => s.sector.id === activeSectorId) ?? null;
-  const activeAgents = activeSectorId ? agentsBySector(activeSectorId) : [];
-  const activePeople = activeSectorId ? peopleBySector(activeSectorId) : [];
-  const leaves = activeSector
-    ? leafPositions(activeSector.pos.angle, activeAgents.length + activePeople.length)
-    : [];
+  const activeSector = sectorNodes.find((s) => s.dept.key === activeDeptKey) ?? null;
+  const activeAgents = activeDeptKey ? graph.agents.filter((a) => a.departmentKey === activeDeptKey) : [];
+  const leaves = activeSector ? leafPositions(activeSector.pos.angle, Math.max(activeAgents.length, 1), leafRadius, leafSpreadDeg) : [];
+
+  function openAgent(agent: OrganizationAgent) {
+    setActiveAgent(agent);
+  }
 
   return (
     <>
       <div className="bc-eco-stats">
-        <div className="bc-eco-stat"><span className="n">{SECTORS.length}</span><span className="lab">Secteurs</span></div>
-        <div className="bc-eco-stat"><span className="n">{AGENTS.length}</span><span className="lab">Agents (n8n)</span></div>
-        <div className="bc-eco-stat"><span className="n">{PEOPLE.length}</span><span className="lab">Personnes</span></div>
-        <div className="bc-eco-stat"><span className="n">1</span><span className="lab">Assistant central</span></div>
+        <div className="bc-eco-stat">
+          <span className="n">{graph.departments.length}</span>
+          <span className="lab">Départements</span>
+        </div>
+        <div className="bc-eco-stat">
+          <span className="n">{graph.agents.length}</span>
+          <span className="lab">Agents</span>
+        </div>
+        <div className="bc-eco-stat">
+          <span className="n">{graph.capabilities.length}</span>
+          <span className="lab">Capacités</span>
+        </div>
+        <div className="bc-eco-stat">
+          <span className="n">{graph.tools.length}</span>
+          <span className="lab">Outils</span>
+        </div>
       </div>
 
       <div className="bc-eco-wrap">
@@ -86,25 +104,12 @@ export function EcosystemGraph() {
             </filter>
           </defs>
 
-          {/* ambient glow behind Jarvis (pulses gently) */}
           <circle className="bc-eco-pulse" cx={CENTER.x} cy={CENTER.y} r={220} fill="url(#eco-core-glow)" />
 
-          {/* decorative orbit rings (dotted) */}
-          {ORBIT_RADII.map((r) => (
-            <circle
-              key={r}
-              cx={CENTER.x}
-              cy={CENTER.y}
-              r={r}
-              fill="none"
-              stroke="var(--bc-amber-dim)"
-              strokeWidth={1}
-              strokeDasharray="1.5 9"
-              opacity={0.35}
-            />
+          {orbitRadii.map((r) => (
+            <circle key={r} cx={CENTER.x} cy={CENTER.y} r={r} fill="none" stroke="var(--bc-amber-dim)" strokeWidth={1} strokeDasharray="1.5 9" opacity={0.35} />
           ))}
 
-          {/* decorative outer belt of unassigned tool glyphs — real brand colors, drifts slowly */}
           <g className="bc-eco-belt-spin" style={{ transformOrigin: `${CENTER.x}px ${CENTER.y}px` }}>
             {outerBelt.map((d, i) => {
               const rad = (d.angleDeg * Math.PI) / 180;
@@ -126,35 +131,24 @@ export function EcosystemGraph() {
             })}
           </g>
 
-          {/* links: Jarvis -> sectors */}
-          {sectorNodes.map(({ sector, pos }) => (
+          {sectorNodes.map(({ dept, pos }) => (
             <line
-              key={`link-${sector.id}`}
-              className={`bc-eco-link${activeSectorId === sector.id ? " bc-eco-link-active" : ""}`}
+              key={`link-${dept.key}`}
+              className={`bc-eco-link${activeDeptKey === dept.key ? " bc-eco-link-active" : ""}`}
               x1={CENTER.x}
               y1={CENTER.y}
               x2={pos.x}
               y2={pos.y}
-              stroke={activeSectorId === sector.id ? sector.color : undefined}
-              filter={activeSectorId === sector.id ? "url(#eco-blur-tight)" : undefined}
+              stroke={activeDeptKey === dept.key ? sectorNodes.find((s) => s.dept.key === dept.key)?.color : undefined}
+              filter={activeDeptKey === dept.key ? "url(#eco-blur-tight)" : undefined}
             />
           ))}
 
-          {/* links: active sector -> its leaves */}
           {activeSector &&
             leaves.map((leaf, i) => (
-              <line
-                key={`leaf-link-${i}`}
-                className="bc-eco-link bc-eco-link-active"
-                stroke={activeSector.sector.color}
-                x1={activeSector.pos.x}
-                y1={activeSector.pos.y}
-                x2={leaf.x}
-                y2={leaf.y}
-              />
+              <line key={`leaf-link-${i}`} className="bc-eco-link bc-eco-link-active" stroke={activeSector.color} x1={activeSector.pos.x} y1={activeSector.pos.y} x2={leaf.x} y2={leaf.y} />
             ))}
 
-          {/* Jarvis core */}
           <g className="bc-eco-node-core" transform={`translate(${CENTER.x}, ${CENTER.y})`}>
             <circle r={34} fill="var(--bc-amber)" opacity={0.16} filter="url(#eco-blur-soft)" />
             <circle r={30} fill="#0b0b0b" stroke="var(--bc-amber)" strokeWidth={1.5} />
@@ -164,86 +158,51 @@ export function EcosystemGraph() {
             </text>
           </g>
 
-          {/* Sector nodes */}
-          {sectorNodes.map(({ sector, pos }) => {
-            const isActive = activeSectorId === sector.id;
+          {sectorNodes.map(({ dept, pos, color, icon }) => {
+            const isActive = activeDeptKey === dept.key;
             return (
-              <g
-                key={sector.id}
-                className="bc-eco-node-sector"
-                transform={`translate(${pos.x}, ${pos.y})`}
-                onClick={() => setActiveSectorId(isActive ? null : sector.id)}
-              >
-                {isActive && <circle className="bc-eco-pulse" r={30} fill={sector.color} opacity={0.28} filter="url(#eco-blur-soft)" />}
-                <circle
-                  r={22}
-                  fill={isActive ? sector.color : "#0b0b0b"}
-                  fillOpacity={isActive ? 0.16 : 1}
-                  stroke={sector.color}
-                  strokeWidth={1.5}
-                />
-                <text textAnchor="middle" dominantBaseline="central" fontSize={14} fill={sector.color}>
-                  {sector.icon}
+              <g key={dept.key} className="bc-eco-node-sector" transform={`translate(${pos.x}, ${pos.y})`} onClick={() => setActiveDeptKey(isActive ? null : dept.key)}>
+                {isActive && <circle className="bc-eco-pulse" r={30} fill={color} opacity={0.28} filter="url(#eco-blur-soft)" />}
+                <circle r={22} fill={isActive ? color : "#0b0b0b"} fillOpacity={isActive ? 0.16 : 1} stroke={color} strokeWidth={1.5} />
+                <text textAnchor="middle" dominantBaseline="central" fontSize={14} fill={color}>
+                  {icon}
                 </text>
                 <text className="bc-eco-label" y={40} textAnchor="middle" fontSize={10.5}>
-                  {sector.name}
+                  {dept.name}
                 </text>
               </g>
             );
           })}
 
-          {/* Leaves: agents + people for the active sector */}
+          {activeSector && activeAgents.length === 0 && leaves[0] && (
+            <g transform={`translate(${leaves[0].x}, ${leaves[0].y})`}>
+              <rect x={-16} y={-16} width={32} height={32} rx={9} fill="var(--bc-surface-2)" stroke="var(--bc-border)" strokeDasharray="3 3" />
+              <text className="bc-eco-label" y={30} textAnchor="middle" fontSize={9.5}>
+                Aucun agent
+              </text>
+            </g>
+          )}
+
           {activeSector &&
             activeAgents.map((agent, i) => {
               const pos = leaves[i];
-              const isDraft = agent.status === "draft";
               return (
                 <g
-                  key={agent.id}
-                  className="bc-eco-node-leaf"
-                  transform={`translate(${pos.x}, ${pos.y})`}
-                  opacity={agent.status === "paused" ? 0.55 : isDraft ? 0.5 : 1}
-                >
-                  <rect
-                    x={-16}
-                    y={-16}
-                    width={32}
-                    height={32}
-                    rx={9}
-                    fill="var(--bc-surface-2)"
-                    stroke="var(--bc-border)"
-                    strokeDasharray={isDraft ? "3 3" : undefined}
-                  />
-                  <text textAnchor="middle" dominantBaseline="central" fontSize={9} fill="var(--bc-text-dim)" fontFamily="var(--font-jbmono)">
-                    {agent.icon}
-                  </text>
-                  <text className="bc-eco-label" y={30} textAnchor="middle" fontSize={9.5}>
-                    {agent.name}
-                    {isDraft ? " (à venir)" : ""}
-                  </text>
-                </g>
-              );
-            })}
-          {activeSector &&
-            activePeople.map((person, i) => {
-              const pos = leaves[activeAgents.length + i];
-              return (
-                <g
-                  key={person.id}
+                  key={agent.key}
                   className="bc-eco-node-leaf"
                   transform={`translate(${pos.x}, ${pos.y})`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setActivePerson(person);
+                    openAgent(agent);
                   }}
                 >
                   <circle r={20} fill="var(--bc-amber)" opacity={0.18} filter="url(#eco-blur-tight)" />
                   <circle r={17} fill="var(--bc-surface-2)" stroke="var(--bc-amber-dim)" strokeWidth={1.2} />
-                  <text textAnchor="middle" dominantBaseline="central" fontSize={11} fill="var(--bc-amber)" fontFamily="var(--font-fraunces)" fontStyle="italic">
-                    {person.initial}
+                  <text textAnchor="middle" dominantBaseline="central" fontSize={9} fill="var(--bc-amber)" fontFamily="var(--font-jbmono)">
+                    {agentGlyph(agent.type)}
                   </text>
                   <text className="bc-eco-label" y={32} textAnchor="middle" fontSize={9.5}>
-                    {person.name.split(" ")[0]}
+                    {agent.name}
                   </text>
                 </g>
               );
@@ -251,7 +210,20 @@ export function EcosystemGraph() {
         </svg>
       </div>
 
-      {activePerson && <PersonPanel person={activePerson} onClose={() => setActivePerson(null)} />}
+      {activeAgent &&
+        (() => {
+          const agentCapabilities = graph.capabilities.filter((c) => c.agentKey === activeAgent.key);
+          const agentToolKeys = new Set(agentCapabilities.flatMap((c) => c.toolKeys));
+          return (
+            <AgentPanel
+              agent={activeAgent}
+              department={graph.departments.find((d) => d.key === activeAgent.departmentKey) ?? null}
+              capabilities={agentCapabilities}
+              tools={graph.tools.filter((t) => agentToolKeys.has(t.key))}
+              onClose={() => setActiveAgent(null)}
+            />
+          );
+        })()}
     </>
   );
 }

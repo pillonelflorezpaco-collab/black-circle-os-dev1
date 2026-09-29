@@ -12,6 +12,9 @@ export const PERMISSIONS = [
   "gererEquipe",
   "facturation",
   "automatisations",
+  "voirAppareils",
+  "approuverTaches",
+  "executerTaches",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -28,6 +31,9 @@ const ALL_FALSE: Record<Permission, boolean> = {
   gererEquipe: false,
   facturation: false,
   automatisations: false,
+  voirAppareils: false,
+  approuverTaches: false,
+  executerTaches: false,
 };
 
 const MATRIX: Record<Role, Record<Permission, boolean>> = {
@@ -43,6 +49,9 @@ const MATRIX: Record<Role, Record<Permission, boolean>> = {
     gererEquipe: true,
     facturation: true,
     automatisations: true,
+    voirAppareils: true,
+    approuverTaches: true,
+    executerTaches: true,
   },
   OWNER: {
     ...ALL_FALSE,
@@ -55,6 +64,9 @@ const MATRIX: Record<Role, Record<Permission, boolean>> = {
     gererEquipe: true,
     facturation: true,
     automatisations: true,
+    voirAppareils: true,
+    approuverTaches: true,
+    executerTaches: true,
   },
   AGENCY_MANAGER: {
     ...ALL_FALSE,
@@ -66,6 +78,9 @@ const MATRIX: Record<Role, Record<Permission, boolean>> = {
     voirCalendrier: true,
     gererEquipe: true,
     automatisations: true,
+    voirAppareils: true,
+    approuverTaches: true,
+    executerTaches: true,
   },
   CONTENT_MANAGER: {
     ...ALL_FALSE,
@@ -101,7 +116,7 @@ const MATRIX: Record<Role, Record<Permission, boolean>> = {
   CHATTER: { ...ALL_FALSE, voirModels: true },
   MODEL_ROLE: { ...ALL_FALSE },
   FINANCE: { ...ALL_FALSE, voirModels: true, facturation: true },
-  DEVELOPER: { ...ALL_FALSE, voirModels: true, automatisations: true },
+  DEVELOPER: { ...ALL_FALSE, voirModels: true, automatisations: true, voirAppareils: true },
   VIEWER: { ...ALL_FALSE, voirModels: true },
 };
 

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:jarvis": "tsx src/jarvis/__tests__/run.ts",
+    "test:execution": "tsx src/execution/__tests__/run.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
@@ -21,6 +23,7 @@
     "clsx": "^2.1.1",
     "googleapis": "^173.0.0",
     "lucide-react": "^1.24.0",
+    "neo4j-driver": "^5.28.3",
     "next": "16.2.10",
     "next-auth": "^5.0.0-beta.31",
     "pg": "^8.22.0",

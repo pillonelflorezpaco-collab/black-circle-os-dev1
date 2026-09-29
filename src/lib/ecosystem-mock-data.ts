@@ -54,23 +54,26 @@ export const SECTORS: EcosystemSector[] = [
 ];
 
 export const AGENTS: EcosystemAgent[] = [
-  { id: "wf1", name: "Onboarding Modèle", sectorId: "ofm", icon: "WF1", status: "active" },
-  { id: "wf2", name: "Création Drive", sectorId: "ofm", icon: "WF2", status: "active" },
-  { id: "wf3", name: "Jarvis", sectorId: "communication", icon: "WF3", status: "active" },
-  { id: "wf4", name: "Sync ClickUp", sectorId: "fulfillment", icon: "WF4", status: "active" },
-  { id: "wf5", name: "Résumé Diario", sectorId: "communication", icon: "WF5", status: "paused" },
-  { id: "wf6", name: "Inventaire Contenu", sectorId: "contenu", icon: "WF6", status: "active" },
+  { id: "wf1", kind: "agent", name: "Onboarding Modèle", sectorId: "ofm", icon: "WF1", status: "active" },
+  { id: "wf2", kind: "agent", name: "Création Drive", sectorId: "ofm", icon: "WF2", status: "active" },
+  { id: "wf3", kind: "agent", name: "Jarvis", sectorId: "communication", icon: "WF3", status: "active" },
+  { id: "wf4", kind: "agent", name: "Sync ClickUp", sectorId: "fulfillment", icon: "WF4", status: "active" },
+  { id: "wf5", kind: "agent", name: "Résumé Diario", sectorId: "communication", icon: "WF5", status: "paused" },
+  { id: "wf6", kind: "agent", name: "Inventaire Contenu", sectorId: "contenu", icon: "WF6", status: "active" },
   // Pas encore construits — placeholders "draft" pour les secteurs à venir.
-  { id: "wf7", name: "Reporting Stratégique", sectorId: "strategie", icon: "WF7", status: "draft" },
-  { id: "wf8", name: "Analyse Data", sectorId: "data", icon: "WF8", status: "draft" },
-  { id: "wf9", name: "Suivi Légal/RH", sectorId: "legal-rh", icon: "WF9", status: "draft" },
+  { id: "wf7", kind: "agent", name: "Reporting Stratégique", sectorId: "strategie", icon: "WF7", status: "draft" },
+  { id: "wf8", kind: "agent", name: "Analyse Data", sectorId: "data", icon: "WF8", status: "draft" },
+  { id: "wf9", kind: "agent", name: "Suivi Légal/RH", sectorId: "legal-rh", icon: "WF9", status: "draft" },
   // Déjà construit côté agence (Blotato) — auto-publication des posts
   // programmés sur les réseaux, teasers OFM comme contenu client agence.
-  { id: "wf10", name: "Auto-Posting", sectorId: "contenu", icon: "WF10", status: "active" },
+  { id: "wf10", kind: "agent", name: "Auto-Posting", sectorId: "contenu", icon: "WF10", status: "active" },
   // Reste du blueprint agence Marketing + OFM — pas encore construits.
-  { id: "wf11", name: "Chatting DM (OFM)", sectorId: "ofm", icon: "WF11", status: "draft" },
-  { id: "wf12", name: "Ads & Paid Sync", sectorId: "marketing", icon: "WF12", status: "draft" },
-  { id: "wf13", name: "Reporting Client", sectorId: "marketing", icon: "WF13", status: "draft" },
+  { id: "wf11", kind: "agent", name: "Chatting DM (OFM)", sectorId: "ofm", icon: "WF11", status: "draft" },
+  { id: "wf12", kind: "agent", name: "Ads & Paid Sync", sectorId: "marketing", icon: "WF12", status: "draft" },
+  { id: "wf13", kind: "agent", name: "Reporting Client", sectorId: "marketing", icon: "WF13", status: "draft" },
+  // Construit côté VPS réel (session Claude Code infra) — sync des 5 clients
+  // agence (Onboarding) depuis ClickUp vers Postgres, même principe que WF4.
+  { id: "wf14", kind: "agent", name: "Sync Clientes Agencia", sectorId: "marketing", icon: "WF14", status: "active" },
 ];
 
 // Real brand colors — used across the ecosystem graph so each tool reads

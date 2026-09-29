@@ -460,3 +460,62 @@ body.bc-app {
 @media (prefers-reduced-motion: reduce) {
   .bc-eco-pulse, .bc-eco-belt-spin { animation: none; }
 }
+
+/* ---- BlackOS Command Center ---- */
+.bc-empty-state { color: var(--bc-text-faint); font-style: italic; font-size: 12.5px; padding: 6px 2px; }
+.bc-empty-state.error { color: var(--bc-red); font-style: normal; }
+
+.bc-status-pill { font-family: var(--font-jbmono), monospace; font-size: 10px; letter-spacing: .4px; padding: 3px 9px; border-radius: 20px; background: var(--bc-surface-2); color: var(--bc-text-dim); text-transform: uppercase; }
+.bc-status-pill.pending { background: rgba(232, 179, 104, 0.16); color: var(--bc-amber); }
+
+.bc-jarvis-panel { position: relative; overflow: hidden; }
+.bc-jarvis-panel.hero { padding: 30px 34px; border-color: var(--bc-amber-dim); background: linear-gradient(180deg, rgba(232,179,104,0.05), transparent 40%), var(--bc-surface); }
+.bc-jarvis-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+.bc-jarvis-eyebrow { font-family: var(--font-jbmono), monospace; font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--bc-amber); margin-bottom: 4px; }
+.bc-jarvis-title { font-family: var(--font-fraunces), serif; font-style: italic; font-size: 22px; color: var(--bc-text); line-height: 1; }
+.bc-jarvis-panel.hero .bc-jarvis-title { font-size: 30px; }
+.bc-jarvis-mode-pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-jbmono), monospace; font-size: 9.5px; letter-spacing: .4px; color: var(--bc-text-faint); background: var(--bc-surface-2); border: 1px solid var(--bc-border); padding: 5px 11px; border-radius: 20px; white-space: nowrap; }
+.bc-jarvis-mode-pill .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--bc-green); }
+.bc-jarvis-input-row { display: flex; gap: 10px; }
+.bc-jarvis-input { flex: 1; background: var(--bc-surface-2); border: 1px solid var(--bc-border); color: var(--bc-text); padding: 13px 15px; border-radius: 10px; font-size: 13.5px; }
+.bc-jarvis-input:focus { outline: none; border-color: var(--bc-amber); }
+.bc-jarvis-plan-btn { background: var(--bc-amber); color: #1a1409; font-family: var(--font-jbmono), monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .6px; padding: 0 22px; border: none; border-radius: 10px; cursor: pointer; transition: opacity .15s; }
+.bc-jarvis-plan-btn:disabled { opacity: .45; cursor: not-allowed; }
+.bc-jarvis-hint { font-size: 12px; color: var(--bc-text-faint); margin-top: 14px; }
+.bc-jarvis-error { color: var(--bc-red); font-size: 12px; margin-top: 12px; }
+.bc-jarvis-result { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--bc-border); display: flex; flex-direction: column; gap: 2px; }
+.bc-jarvis-result-row { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+.bc-jarvis-result-row:last-child { border-bottom: none; }
+.bc-jarvis-result-row .k { font-family: var(--font-jbmono), monospace; font-size: 10px; letter-spacing: .8px; text-transform: uppercase; color: var(--bc-text-faint); flex-shrink: 0; }
+.bc-jarvis-result-row .v { font-size: 13.5px; color: var(--bc-text); text-align: right; }
+.bc-jarvis-result-row .v.mono { font-family: var(--font-jbmono), monospace; font-size: 12px; }
+.bc-jarvis-result-row .v.dim { color: var(--bc-text-dim); font-size: 12.5px; font-style: italic; }
+
+.bc-nav-btn.disabled { opacity: .35; cursor: default; pointer-events: none; }
+
+/* Secondary system indicators — deliberately quieter than .bc-mini-card
+   default (smaller number, tighter padding) so they read as background
+   status, not the page's focal point. */
+.bc-grid4.compact { gap: 10px; margin-bottom: 0; }
+.bc-mini-card.compact { padding: 12px 14px; }
+.bc-mini-card.compact .val { font-size: 18px; }
+.bc-mini-card.compact .lab { margin-bottom: 5px; }
+
+/* ---- Attention panel ---- */
+.bc-attention { border-color: var(--bc-amber-dim); background: rgba(232, 179, 104, 0.04); }
+.bc-attention.quiet { border-color: var(--bc-border); background: var(--bc-surface); }
+.bc-attention-row { display: flex; align-items: center; gap: 12px; padding: 10px 2px; }
+.bc-attention-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bc-amber); flex-shrink: 0; box-shadow: 0 0 0 3px rgba(232,179,104,0.18); }
+.bc-attention-dot.crit { background: var(--bc-red); box-shadow: 0 0 0 3px rgba(193,96,74,0.18); }
+
+/* ---- Organization mini-preview ---- */
+.bc-org-preview-dots { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0; }
+.bc-org-preview-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+/* ---- Search placeholder ---- */
+.bc-search-placeholder { display: flex; align-items: center; gap: 8px; background: var(--bc-surface-2); border: 1px solid var(--bc-border); color: var(--bc-text-faint); font-size: 12px; padding: 8px 12px; border-radius: 9px; cursor: not-allowed; margin-bottom: 18px; }
+
+/* ---- Compact page header (Tasks/Approvals/Events) ---- */
+.bc-page-summary { display: flex; align-items: center; gap: 18px; margin-bottom: 18px; flex-wrap: wrap; }
+.bc-page-summary-stat { font-family: var(--font-jbmono), monospace; font-size: 12px; color: var(--bc-text-dim); }
+.bc-page-summary-stat b { color: var(--bc-text); font-size: 15px; }

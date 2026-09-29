@@ -3,6 +3,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      target: runner
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -12,10 +13,22 @@ services:
       # non-Docker local dev) — inside the compose network the DB is only
       # reachable via the service name `db`, never localhost.
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Next.js standalone server.js binds to $HOSTNAME if it's set — Docker
+      # always sets $HOSTNAME to the container's short ID, which Next then
+      # tries to bind to directly instead of all interfaces. With two
+      # networks attached (default + automation_net) that id can resolve to
+      # either network's IP depending on attach order, making the app
+      # unreachable on the other one (including 127.0.0.1/localhost inside
+      # its own container). Forcing 0.0.0.0 makes it listen on every
+      # interface regardless of network attach order.
+      HOSTNAME: "0.0.0.0"
     depends_on:
       db:
         condition: service_healthy
     command: sh -c "npx prisma migrate deploy && node server.js"
+    networks:
+      - default
+      - automation_net
 
   worker:
     build:
@@ -33,6 +46,9 @@ services:
         condition: service_healthy
       app:
         condition: service_started # only `app` runs `prisma migrate deploy`; worker assumes the schema is already current
+    networks:
+      - default
+      - automation_net
 
   db:
     image: postgres:16-alpine
@@ -50,6 +66,12 @@ services:
       retries: 5
     # No ports published to the host on purpose — only `app` can reach it,
     # over the compose network (service name `db`, not localhost).
+
+networks:
+  default:
+  automation_net:
+    name: automation-stack_automation_net
+    external: true
 
 volumes:
   pgdata:
