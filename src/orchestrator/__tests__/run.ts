@@ -7,10 +7,26 @@
  * dispatched — see docs/orchestrator.md "Known limitation").
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { startOrchestration, resumeOrchestration, __testing } from "../orchestratorService";
+import { createEngineApiKey } from "@/lib/engineAuth";
+import { POST as postOrchestratorRoute } from "@/app/api/engine/orchestrator/request/route";
 import type { OrchestrationRequest } from "../types";
 import type { JarvisPlan } from "@/jarvis/types";
+
+// V0.1c HTTP route tests call the route module's exported POST() handler
+// directly, in-process, rather than fetching a live server URL — the
+// running black-circle-os-app-1 container is NOT recreated/redeployed for
+// this validation (explicitly out of scope for this phase), so a real HTTP
+// round trip to it would still be running the pre-V0.1c image. Calling
+// POST() directly against a real NextRequest exercises the exact same route
+// code (auth, validation, authorization, startOrchestration() call, response
+// mapping) with the exact same real Postgres — nothing about the route's
+// behavior is mocked or bypassed.
+const ROUTE_URL = "http://localhost/api/engine/orchestrator/request";
 
 let passed = 0;
 let failed = 0;
@@ -94,6 +110,13 @@ async function main() {
   const assistant = await prisma.user.findFirst({ where: { role: "ASSISTANT", agencyId } });
 
   const otherAgency = await prisma.agency.create({ data: { name: "[test] orchestrator other agency", slug: `test-orch-other-agency-${Date.now()}` } });
+
+  // A real EngineApiKey, minted fresh for this test run and deleted in the
+  // finally block — same pattern as the synthetic Agency/User fixtures
+  // above. Scoped to `agencyId` so the "wrong agency" HTTP tests below have
+  // a real boundary to cross.
+  const { plaintext: apiKeyPlaintext, record: apiKeyRecord } = await createEngineApiKey({ label: "[test] orchestrator route", scopes: [], agencyId });
+  const cleanupEngineApiKeyIds: string[] = [apiKeyRecord.id];
 
   const [ordersBefore, tasksBefore, approvalsBefore, executionsBefore, eventsBefore] = await Promise.all([
     prisma.orchestrationRecord.count(),
@@ -377,6 +400,181 @@ async function main() {
         assert.equal(result.orchestration.state, "TASK_CREATED");
       });
     }
+
+    // ================================================================
+    // V0.1c — HTTP route tests (POST /api/engine/orchestrator/request)
+    // ================================================================
+
+    async function postRoute(headers: Record<string, string>, rawBody: string) {
+      const req = new NextRequest(ROUTE_URL, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: rawBody });
+      const res = await postOrchestratorRoute(req);
+      const text = await res.text();
+      let json: unknown = null;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        // some tests deliberately expect a non-JSON or empty body
+      }
+      return { status: res.status, json, text };
+    }
+
+    const authHeader = { Authorization: `Bearer ${apiKeyPlaintext}` };
+
+    await test("route: valid authenticated request succeeds with a thin response", async () => {
+      const requestId = `test-orch-route-${Date.now()}-a`;
+      const { status, json } = await postRoute(authHeader, JSON.stringify({ message: "plan my content", agencyId, actorId, source: "internal", requestId }));
+      assert.equal(status, 200);
+      const body = json as { orchestrationId: string; requestId: string; state: string; taskId: string | null; approvalId: string | null; executionId: string | null };
+      assert.ok(body.orchestrationId);
+      cleanupOrchestrationIds.push(body.orchestrationId);
+      if (body.taskId) cleanupTaskIds.push(body.taskId);
+      assert.equal(body.requestId, requestId);
+      assert.equal(body.state, "TASK_CREATED");
+      assert.equal(body.approvalId, null);
+      assert.equal(body.executionId, null);
+      // Thin response only — no nested task/approval/execution objects, no Prisma fields beyond the 6 listed.
+      assert.deepEqual(Object.keys(body).sort(), ["approvalId", "executionId", "orchestrationId", "requestId", "state", "taskId"]);
+    });
+
+    await test("route: missing authentication returns 401", async () => {
+      const { status } = await postRoute({}, JSON.stringify({ message: "plan my content", agencyId, actorId, source: "internal" }));
+      assert.equal(status, 401);
+    });
+
+    await test("route: invalid authentication returns 401", async () => {
+      const { status } = await postRoute({ Authorization: "Bearer not-a-real-key" }, JSON.stringify({ message: "plan my content", agencyId, actorId, source: "internal" }));
+      assert.equal(status, 401);
+    });
+
+    await test("route: authenticated caller requesting another agency returns 403, no orchestration created", async () => {
+      const before = await prisma.orchestrationRecord.count();
+      const { status } = await postRoute(authHeader, JSON.stringify({ message: "plan my content", agencyId: otherAgency.id, actorId, source: "internal" }));
+      assert.equal(status, 403);
+      const after = await prisma.orchestrationRecord.count();
+      assert.equal(after, before, "a rejected cross-agency request must not create an orchestration");
+    });
+
+    await test("route: missing body returns 400", async () => {
+      const { status } = await postRoute(authHeader, "");
+      assert.equal(status, 400);
+    });
+
+    await test("route: malformed JSON returns 400", async () => {
+      const { status } = await postRoute(authHeader, "{not json");
+      assert.equal(status, 400);
+    });
+
+    await test("route: missing required field returns 400", async () => {
+      const { status } = await postRoute(authHeader, JSON.stringify({ agencyId, actorId, source: "internal" }));
+      assert.equal(status, 400);
+    });
+
+    await test("route: invalid field type returns 400", async () => {
+      const { status } = await postRoute(authHeader, JSON.stringify({ message: "plan my content", agencyId: 12345, actorId, source: "internal" }));
+      assert.equal(status, 400);
+    });
+
+    // "Valid request requiring approval → AWAITING_APPROVAL" cannot be driven
+    // through this real HTTP route today: the real seeded Neo4j graph has no
+    // HIGH-risk capability (confirmed by direct query — see
+    // src/orchestrator/__tests__/run.ts's syntheticHighRiskPlan() comment),
+    // and this route intentionally only calls the real planJarvisRequest(),
+    // never a synthetic plan. The AWAITING_APPROVAL boundary itself — never
+    // auto-approving, never executing while pending — is already fully
+    // covered by the service-level tests above (which do use a synthetic
+    // plan via __testing.continueFromPlan) and by the resume tests. Faking a
+    // HIGH-risk capability into Neo4j to make this one HTTP test possible
+    // was explicitly out of scope ("Do not alter production data merely to
+    // make tests pass" / "no Neo4j writes").
+
+    await test("route: valid non-approval orchestration returns the correct thin response (equivalent to the documented 'valid request' case)", async () => {
+      const requestId = `test-orch-route-${Date.now()}-h`;
+      const { status, json } = await postRoute(authHeader, JSON.stringify({ message: "plan my content", agencyId, actorId, source: "internal", requestId }));
+      assert.equal(status, 200);
+      const body = json as { orchestrationId: string; state: string; taskId: string | null };
+      cleanupOrchestrationIds.push(body.orchestrationId);
+      if (body.taskId) cleanupTaskIds.push(body.taskId);
+      assert.equal(body.state, "TASK_CREATED");
+    });
+
+    await test("route: repeated requestId returns the same orchestration, no duplicate Task", async () => {
+      const requestId = `test-orch-route-${Date.now()}-i`;
+      const first = await postRoute(authHeader, JSON.stringify({ message: "plan my content", agencyId, actorId, source: "internal", requestId }));
+      const firstBody = first.json as { orchestrationId: string; taskId: string | null };
+      cleanupOrchestrationIds.push(firstBody.orchestrationId);
+      if (firstBody.taskId) cleanupTaskIds.push(firstBody.taskId);
+
+      const second = await postRoute(authHeader, JSON.stringify({ message: "plan my content", agencyId, actorId, source: "internal", requestId }));
+      const secondBody = second.json as { orchestrationId: string; taskId: string | null };
+      assert.equal(secondBody.orchestrationId, firstBody.orchestrationId);
+      assert.equal(secondBody.taskId, firstBody.taskId);
+
+      const recordCount = await prisma.orchestrationRecord.count({ where: { agencyId, requestId } });
+      assert.equal(recordCount, 1);
+      const taskCount = await prisma.task.count({ where: { id: firstBody.taskId! } });
+      assert.equal(taskCount, 1);
+    });
+
+    await test("route: concurrent identical requestId yields exactly one orchestration and one Task", async () => {
+      const requestId = `test-orch-route-${Date.now()}-j`;
+      const [a, b] = await Promise.all([
+        postRoute(authHeader, JSON.stringify({ message: "plan my content", agencyId, actorId, source: "internal", requestId })),
+        postRoute(authHeader, JSON.stringify({ message: "plan my content", agencyId, actorId, source: "internal", requestId })),
+      ]);
+      const aBody = a.json as { orchestrationId: string; taskId: string | null };
+      const bBody = b.json as { orchestrationId: string; taskId: string | null };
+      cleanupOrchestrationIds.push(aBody.orchestrationId);
+      const taskIds = new Set([aBody.taskId, bBody.taskId].filter(Boolean));
+      taskIds.forEach((id) => cleanupTaskIds.push(id as string));
+
+      assert.equal(aBody.orchestrationId, bBody.orchestrationId);
+      const recordCount = await prisma.orchestrationRecord.count({ where: { agencyId, requestId } });
+      assert.equal(recordCount, 1);
+      assert.equal(taskIds.size, 1);
+    });
+
+    await test("route: error response sanitization — no stack trace, no Prisma internals, no credentials", async () => {
+      // Provoke real 4xx responses (no code path here triggers a genuine 500
+      // without injecting a fault) and confirm their bodies never carry
+      // anything beyond the flat zod/plain-string shapes this route uses.
+      const responses = await Promise.all([
+        postRoute({}, "{}"),
+        postRoute(authHeader, "{not json"),
+        postRoute(authHeader, JSON.stringify({ message: "x", agencyId, actorId: "does-not-exist", source: "internal" })),
+      ]);
+      for (const { text } of responses) {
+        assert.ok(!/at .*\(.*:\d+:\d+\)/.test(text), "response must not contain a stack trace frame");
+        assert.ok(!/prisma|postgres|ENGINE_API_KEY_PEPPER|WEBHOOK_SHARED_SECRET/i.test(text), "response must not leak internal identifiers or secrets");
+        assert.ok(!apiKeyPlaintext || !text.includes(apiKeyPlaintext), "response must never echo back the API key");
+      }
+    });
+
+    await test("route: cannot impersonate another actor — actorId from a different agency than the key is rejected", async () => {
+      const otherAgencyUser = await prisma.user.create({
+        data: { email: `test-orch-route-impersonate-${Date.now()}@example.com`, name: "Other Agency User", role: "OWNER", agency: { connect: { id: otherAgency.id } } },
+      });
+      try {
+        const { status } = await postRoute(authHeader, JSON.stringify({ message: "plan my content", agencyId, actorId: otherAgencyUser.id, source: "internal" }));
+        assert.equal(status, 403);
+      } finally {
+        await prisma.user.delete({ where: { id: otherAgencyUser.id } }).catch(() => {});
+      }
+    });
+
+    await test("route: static guard — no direct business-mutation Prisma calls, no n8n/Neo4j access, only startOrchestration()", async () => {
+      const source = fs.readFileSync(path.join(__dirname, "..", "..", "app", "api", "engine", "orchestrator", "request", "route.ts"), "utf-8");
+      const importLines = source.split("\n").filter((line) => line.trim().startsWith("import "));
+      assert.ok(!importLines.some((line) => /n8nClient|neo4j/i.test(line)), "route must not import n8nClient or a Neo4j client");
+      assert.ok(!source.includes("planJarvisRequest(") && !source.includes("createTaskFromJarvisPlan(") && !source.includes("createApprovalForTask(") && !source.includes("createExecutionForTask("), "route must call startOrchestration() only, never the inner engine functions directly");
+      assert.ok(source.includes("startOrchestration("), "route must call startOrchestration()");
+      // The one permitted Prisma call resolves the authenticated actor's real
+      // Role/agencyId (same pattern as /api/engine/executions/trigger) — the
+      // route must never go beyond that to touch Task/Approval/Execution/
+      // OrchestrationRecord tables directly.
+      const prismaCalls = source.match(/prisma\.\w+\./g) ?? [];
+      assert.deepEqual(new Set(prismaCalls), new Set(["prisma.user."]), "route must not perform any Prisma access beyond the actor lookup");
+    });
+
   } finally {
     if (cleanupTaskIds.length > 0) {
       await prisma.executionStep.deleteMany({ where: { execution: { taskId: { in: cleanupTaskIds } } } });
@@ -386,6 +584,9 @@ async function main() {
     }
     if (cleanupOrchestrationIds.length > 0) {
       await prisma.orchestrationRecord.deleteMany({ where: { id: { in: cleanupOrchestrationIds } } });
+    }
+    if (cleanupEngineApiKeyIds.length > 0) {
+      await prisma.engineApiKey.deleteMany({ where: { id: { in: cleanupEngineApiKeyIds } } });
     }
     // taskService/approvalService (existing, already-tested engines) write
     // Event rows referencing the Tasks/Approvals deleted above via plain

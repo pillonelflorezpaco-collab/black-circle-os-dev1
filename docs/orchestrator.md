@@ -118,3 +118,100 @@ considered and deliberately not added in v0.1a: nothing yet observes
 orchestration-level events independently of the Task/Approval events that
 already exist, so adding them now would be speculative. Revisit when the
 Command Center orchestrator view (V0.2+) is built.
+
+## Resume boundary (v0.1b)
+
+`resumeOrchestration(orchestrationId, actor)` resumes an orchestration after
+a human has already approved it through the existing Approval Engine
+(`approveApproval()`, session-authed, outside this module entirely).
+
+**Critical invariant:** `OrchestrationRecord.state` is never read to decide
+whether execution is authorized. Every decision re-reads the real
+`Approval.status` and `Task.status` at call time:
+- an attached `executionId` is the only signal used to short-circuit to
+  `ALREADY_RESUMED` — never the `state` label;
+- if an `approvalId` was recorded, the real `Approval` row is fetched fresh
+  and must be `APPROVED`, or the call returns `APPROVAL_PENDING`;
+- the real `Task` row must be `READY`, or the call returns `TASK_NOT_READY`.
+
+This function never sets `Approval.status`, never calls `approveApproval()`,
+and only calls the existing `createExecutionForTask()` once both of the
+above are satisfied. The resulting `OrchestrationState` is the smallest
+accurate label (`COMPLETED`/`FAILED`/`EXECUTING`) derived from the real
+`Execution.status` — never presumed `COMPLETED` merely because
+`createExecutionForTask()` returned successfully.
+
+Idempotency: `executionId` presence is the resume-level idempotency signal;
+concurrent resume calls converge on exactly one `Execution` via the
+Execution Engine's own `(taskId, idempotencyKey)` uniqueness — no additional
+lock was introduced for resume.
+
+## V0.1c — HTTP entry point
+
+**Endpoint:** `POST /api/engine/orchestrator/request`
+
+**Authentication:** the same Bearer/`EngineApiKey` mechanism as every other
+`/api/engine/**` route (`verifyEngineApiKey`) — no second auth system. No
+credentials or invalid credentials → `401`.
+
+**Request shape** (mirrors `JarvisRequest` plus the first-class `requestId`
+already introduced in v0.1a — no competing request model):
+```json
+{
+  "message": "plan my content",
+  "agencyId": "...",
+  "actorId": "...",
+  "source": "internal | telegram | engine",
+  "requestId": "optional idempotency key",
+  "metadata": {}
+}
+```
+
+**Response shape** — a thin projection of `OrchestrationRecordView`, never a
+raw Prisma object and never a nested Task/Approval/Execution body:
+```json
+{
+  "orchestrationId": "...",
+  "requestId": "...",
+  "state": "TASK_CREATED",
+  "taskId": "...",
+  "approvalId": null,
+  "executionId": null
+}
+```
+
+**HTTP status mapping:**
+| Status | Meaning |
+|---|---|
+| 200 | orchestration ran and produced a deterministic result — including `NEEDS_CLARIFICATION`/`FAILED` outcomes, which are still complete, non-error responses (same convention as the existing `/api/engine/jarvis/request` route) |
+| 400 | malformed JSON, missing/invalid fields, or `actorId` not a real user |
+| 401 | missing or invalid `EngineApiKey` |
+| 403 | authenticated key's agency does not match the request's `agencyId`, or the resolved actor belongs to a different agency than the key |
+| 500 | unexpected internal failure — response body is a fixed generic string, never `err.message` |
+
+**Idempotency:** unchanged from v0.1a/b — `requestId` is the same
+`(agencyId, requestId)`-unique key `startOrchestration()` already enforces.
+The route introduces no second, HTTP-specific idempotency store.
+
+**Approval boundary:** unchanged. The route only calls `startOrchestration()`
+— it cannot approve, infer approval, or bypass `AWAITING_APPROVAL`.
+
+**Execution boundary:** unchanged. The route has no execution authority; the
+only path to n8n remains HTTP → `startOrchestration()` → Execution Engine →
+n8n. The route never imports `n8nClient`, never calls Neo4j, and performs no
+Prisma access beyond resolving the authenticated actor's real
+`Role`/`agencyId` (the same single lookup `/api/engine/executions/trigger`
+already performs, for the same reason: the request body's `actorId` role/
+agency is never trusted on its own).
+
+**The route is an adapter only:** authenticate → validate → authorize →
+`startOrchestration()` → map result → respond. It does not call
+`planJarvisRequest`/`createTaskFromJarvisPlan`/`createApprovalForTask`/
+`createExecutionForTask` directly.
+
+**Known deviation:** `EngineApiKey.scopes` exists in the schema but is not
+enforced by this route, because no existing `/api/engine/**` route enforces
+it either — introducing scope enforcement only here would be a new,
+inconsistent authorization mechanism rather than a reuse of an established
+one. This is a pre-existing gap across all engine routes, not introduced by
+v0.1c.
