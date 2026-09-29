@@ -221,6 +221,37 @@ async function main() {
       assert.notEqual(result.status, "APPROVAL_REQUIRED");
     });
 
+    await test("MEDIUM social_media_management with only a REJECTED approval (no APPROVED one) still returns APPROVAL_REQUIRED — REJECTED is never treated as authorization", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId);
+      const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM", entityType: "POST", entityId: fixture.post.id });
+      cleanupTaskIds.push(task.id);
+      // Task.status is kept READY (bypassing the normal rejectApproval() ->
+      // CANCELLED transition) specifically to isolate what this gate checks:
+      // the presence of an APPROVED Approval, not merely the presence of any
+      // Approval row at all.
+      await prisma.approval.create({
+        data: { agency: { connect: { id: agencyId } }, task: { connect: { id: task.id } }, status: "REJECTED", riskLevel: "MEDIUM", requestedBy: { connect: { id: actorId } }, decidedBy: { connect: { id: actorId } }, decidedAt: new Date() },
+      });
+      const result = await createExecutionForTask(task.id, adminActor);
+      assert.equal(result.status, "APPROVAL_REQUIRED");
+    });
+
+    await test("security: createExecutionForTask accepts no capability argument a caller could supply — the persisted Task.capabilityKey is the only input to the approval gate", async () => {
+      // No test call here: this is a structural/API-shape guard. The
+      // function's own signature is createExecutionForTask(taskId, actor) —
+      // there is no capabilityKey/riskLevel parameter for a caller to pass,
+      // so there is no channel through which a request/Agent-provided
+      // capability could ever conflict with, let alone override, the Task
+      // row's own persisted capabilityKey. Confirmed structurally below
+      // rather than by a runtime call, since there is nothing to call it
+      // with.
+      const source = fs.readFileSync(path.join(__dirname, "..", "executionService.ts"), "utf-8");
+      const signatureMatch = source.match(/export async function createExecutionForTask\(([^)]*)\)/);
+      assert.ok(signatureMatch, "expected to find createExecutionForTask's signature");
+      const params = signatureMatch![1];
+      assert.ok(!/capabilityKey|riskLevel/i.test(params), "createExecutionForTask must not accept a caller-supplied capabilityKey or riskLevel — both must come only from the persisted Task row");
+    });
+
     await test("concurrent duplicate calls for the same task race on the idempotency key, not a second Execution row", async () => {
       const task = await makeTask(agencyId);
       cleanupTaskIds.push(task.id);
