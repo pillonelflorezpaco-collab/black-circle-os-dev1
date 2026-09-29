@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { prisma } from "@/lib/prisma";
-import { startOrchestration, __testing } from "../orchestratorService";
+import { startOrchestration, resumeOrchestration, __testing } from "../orchestratorService";
 import type { OrchestrationRequest } from "../types";
 import type { JarvisPlan } from "@/jarvis/types";
 
@@ -45,6 +45,29 @@ function syntheticHighRiskPlan(): JarvisPlan {
     permissions: { coarseRoleCheck: "PASSED", fineGrainedAuthorization: "NOT_IMPLEMENTED" },
     steps: ["SYNTHETIC_HIGH_RISK_PLAN"],
   };
+}
+
+/**
+ * Drives a synthetic HIGH-risk orchestration to AWAITING_APPROVAL (real
+ * Task + real PENDING Approval), then — only if `approve` is true — mutates
+ * the Approval/Task rows directly to APPROVED/READY. This mutation
+ * deliberately bypasses approveApproval() on purpose: it stands in for "a
+ * human already approved this through the dashboard," which is the only
+ * legitimate way Approval.status becomes APPROVED in production. The
+ * orchestrator itself is never the one making this change — see
+ * resumeOrchestration()'s doc comment.
+ */
+async function makeHighRiskOrchestration(agencyId: string, actorId: string, adminActor: { id: string; role: string; agencyId: string | null }, approveAndReady: boolean) {
+  const orchestration = await __testing.getOrCreateOrchestration(makeRequest(agencyId, actorId, { requestId: `test-orch-resume-${Date.now()}-${Math.random().toString(36).slice(2)}` }));
+  await prisma.orchestrationRecord.update({ where: { id: orchestration.id }, data: { state: "PLANNING" } });
+  const result = await __testing.continueFromPlan(orchestration.id, makeRequest(agencyId, actorId), syntheticHighRiskPlan(), adminActor as never);
+
+  if (approveAndReady) {
+    await prisma.approval.update({ where: { id: result.orchestration.approvalId! }, data: { status: "APPROVED", decidedBy: { connect: { id: actorId } }, decidedAt: new Date() } });
+    await prisma.task.update({ where: { id: result.orchestration.taskId! }, data: { status: "READY" } });
+  }
+
+  return { orchestrationId: result.orchestration.id, taskId: result.orchestration.taskId!, approvalId: result.orchestration.approvalId! };
 }
 
 function makeRequest(agencyId: string, actorId: string, overrides: Partial<OrchestrationRequest> = {}): OrchestrationRequest {
@@ -217,6 +240,132 @@ async function main() {
       // Approval.status/riskLevel or Execution.status/result.
       const forbiddenFields = ["taskStatus", "taskRiskLevel", "taskTitle", "approvalStatus", "approvalRiskLevel", "executionStatus", "executionResult"];
       forbiddenFields.forEach((f) => assert.ok(!keys.includes(f), `OrchestrationRecord must not have field ${f}`));
+    });
+
+    await test("resume: APPROVED + READY → execution is created (RESUMED)", async () => {
+      const { orchestrationId, taskId } = await makeHighRiskOrchestration(agencyId, actorId, adminActor, true);
+      cleanupOrchestrationIds.push(orchestrationId);
+      cleanupTaskIds.push(taskId);
+
+      const result = await resumeOrchestration(orchestrationId, adminActor);
+      assert.equal(result.status, "RESUMED");
+      if (result.status !== "RESUMED") return;
+      assert.ok(result.orchestration.executionId, "expected an executionId to be attached");
+      assert.equal(result.orchestration.state, "EXECUTING", "execution is AWAITING_CALLBACK immediately after dispatch, not yet terminal — EXECUTING is the accurate label");
+
+      const execution = await prisma.execution.findUnique({ where: { id: result.orchestration.executionId! } });
+      assert.equal(execution?.taskId, taskId);
+    });
+
+    await test("resume: PENDING approval → execution is NOT created, Approval remains PENDING (no auto-approval)", async () => {
+      const { orchestrationId, approvalId } = await makeHighRiskOrchestration(agencyId, actorId, adminActor, false);
+      cleanupOrchestrationIds.push(orchestrationId);
+
+      const result = await resumeOrchestration(orchestrationId, adminActor);
+      assert.equal(result.status, "APPROVAL_PENDING");
+      if (result.status === "APPROVAL_PENDING") {
+        assert.equal(result.orchestration.executionId, null);
+        cleanupTaskIds.push(result.orchestration.taskId!);
+      }
+
+      const approval = await prisma.approval.findUnique({ where: { id: approvalId } });
+      assert.equal(approval?.status, "PENDING", "orchestrator must never approve an Approval itself");
+    });
+
+    await test("resume: APPROVED but Task not READY → execution is NOT created", async () => {
+      const { orchestrationId, taskId, approvalId } = await makeHighRiskOrchestration(agencyId, actorId, adminActor, false);
+      cleanupOrchestrationIds.push(orchestrationId);
+      cleanupTaskIds.push(taskId);
+      // Approve the Approval but deliberately do NOT move the Task to READY
+      // (simulates an inconsistent/incomplete state) — resume must still refuse.
+      await prisma.approval.update({ where: { id: approvalId }, data: { status: "APPROVED", decidedBy: { connect: { id: actorId } }, decidedAt: new Date() } });
+
+      const result = await resumeOrchestration(orchestrationId, adminActor);
+      assert.equal(result.status, "TASK_NOT_READY");
+      if (result.status === "TASK_NOT_READY") assert.equal(result.orchestration.executionId, null);
+    });
+
+    await test("resume: OrchestrationRecord.state fraudulently says EXECUTING but real Approval is not APPROVED → still rejected", async () => {
+      const { orchestrationId, approvalId } = await makeHighRiskOrchestration(agencyId, actorId, adminActor, false);
+      cleanupOrchestrationIds.push(orchestrationId);
+      // Directly corrupt the coordination row's state label — this must have
+      // zero effect on the authorization decision, proving OrchestrationRecord
+      // is not an authorization source.
+      await prisma.orchestrationRecord.update({ where: { id: orchestrationId }, data: { state: "EXECUTING" } });
+
+      const result = await resumeOrchestration(orchestrationId, adminActor);
+      assert.equal(result.status, "APPROVAL_PENDING", "a fraudulent state label must not bypass the real Approval check");
+      if (result.status === "APPROVAL_PENDING") {
+        assert.equal(result.orchestration.executionId, null);
+        cleanupTaskIds.push(result.orchestration.taskId!);
+      }
+
+      const approval = await prisma.approval.findUnique({ where: { id: approvalId } });
+      assert.equal(approval?.status, "PENDING");
+    });
+
+    await test("resume: wrong agency is rejected (FORBIDDEN), no execution", async () => {
+      const { orchestrationId, taskId } = await makeHighRiskOrchestration(agencyId, actorId, adminActor, true);
+      cleanupOrchestrationIds.push(orchestrationId);
+      cleanupTaskIds.push(taskId);
+
+      const result = await resumeOrchestration(orchestrationId, { id: actorId, role: "OWNER", agencyId: otherAgency.id });
+      assert.equal(result.status, "FORBIDDEN");
+
+      const record = await prisma.orchestrationRecord.findUnique({ where: { id: orchestrationId } });
+      assert.equal(record?.executionId, null, "a wrong-agency resume attempt must not create an execution");
+    });
+
+    if (assistant) {
+      await test("resume: missing executerTaches permission → EXECUTION_FAILED, orchestration becomes FAILED (never COMPLETED)", async () => {
+        const { orchestrationId, taskId } = await makeHighRiskOrchestration(agencyId, actorId, adminActor, true);
+        cleanupOrchestrationIds.push(orchestrationId);
+        cleanupTaskIds.push(taskId);
+
+        const result = await resumeOrchestration(orchestrationId, { id: assistant.id, role: assistant.role, agencyId });
+        assert.equal(result.status, "EXECUTION_FAILED");
+        if (result.status === "EXECUTION_FAILED") {
+          assert.equal(result.orchestration.state, "FAILED");
+          assert.notEqual(result.orchestration.state, "COMPLETED");
+        }
+
+        const record = await prisma.orchestrationRecord.findUnique({ where: { id: orchestrationId } });
+        assert.equal(record?.executionId, null, "the forbidden actor must not have created an execution");
+      });
+    }
+
+    await test("resume: idempotent re-call after execution already exists → ALREADY_RESUMED, no duplicate Execution", async () => {
+      const { orchestrationId, taskId } = await makeHighRiskOrchestration(agencyId, actorId, adminActor, true);
+      cleanupOrchestrationIds.push(orchestrationId);
+      cleanupTaskIds.push(taskId);
+
+      const first = await resumeOrchestration(orchestrationId, adminActor);
+      assert.equal(first.status, "RESUMED");
+      const second = await resumeOrchestration(orchestrationId, adminActor);
+      assert.equal(second.status, "ALREADY_RESUMED");
+      if (first.status === "RESUMED" && second.status === "ALREADY_RESUMED") {
+        assert.equal(first.orchestration.executionId, second.orchestration.executionId);
+      }
+
+      const count = await prisma.execution.count({ where: { taskId } });
+      assert.equal(count, 1, "must not create a second Execution for the same Task/orchestration");
+    });
+
+    await test("resume: concurrent resume calls on the same orchestration create exactly one Execution", async () => {
+      const { orchestrationId, taskId } = await makeHighRiskOrchestration(agencyId, actorId, adminActor, true);
+      cleanupOrchestrationIds.push(orchestrationId);
+      cleanupTaskIds.push(taskId);
+
+      const [first, second] = await Promise.all([resumeOrchestration(orchestrationId, adminActor), resumeOrchestration(orchestrationId, adminActor)]);
+      const executionIds = new Set(
+        [first, second]
+          .map((r) => ("orchestration" in r ? r.orchestration.executionId : null))
+          .filter(Boolean),
+      );
+      assert.equal(executionIds.size, 1, "concurrent resumes must converge on exactly one executionId");
+
+      const count = await prisma.execution.count({ where: { taskId } });
+      assert.equal(count, 1);
     });
 
     if (assistant) {

@@ -1,12 +1,15 @@
 import { Prisma, type OrchestrationRecord } from "@prisma/client";
 import { orchestrationRepository } from "@/repositories/orchestration.repository";
 import { taskRepository } from "@/repositories/task.repository";
+import { approvalRepository } from "@/repositories/approval.repository";
+import { executionRepository } from "@/repositories/execution.repository";
 import { planJarvisRequest } from "@/jarvis/core";
 import { createTaskFromJarvisPlan } from "@/jarvis/taskService";
 import { createApprovalForTask } from "@/jarvis/approvalService";
 import { createExecutionForTask } from "@/execution/executionService";
+import { assertSameAgency, ForbiddenError } from "@/lib/permissions";
 import type { JarvisPlan, JarvisRequest } from "@/jarvis/types";
-import type { OrchestrationRequest, StartOrchestrationResult } from "./types";
+import type { OrchestrationRequest, ResumeOrchestrationResult, StartOrchestrationResult } from "./types";
 import type { Role } from "@prisma/client";
 
 interface Actor {
@@ -115,6 +118,100 @@ async function continueFromPlan(orchestrationId: string, request: JarvisRequest,
   await orchestrationRepository.attachExecution(orchestrationId, executionResult.execution.id);
   const executing = await orchestrationRepository.updateState(orchestrationId, "EXECUTING");
   return { orchestration: toView(executing), plan };
+}
+
+/**
+ * Jarvis Orchestrator v0.1b — resume path. See docs/orchestrator.md
+ * "Resume boundary (v0.1b)".
+ *
+ * CRITICAL SECURITY INVARIANT: OrchestrationRecord.state is NEVER read here
+ * to decide whether execution is authorized. Every authorization decision
+ * below is re-derived from a fresh read of the real Approval/Task rows (or,
+ * for "has this already been resumed," from OrchestrationRecord.executionId
+ * — presence of an attached execution id, not the state label). A caller
+ * that somehow set state to "EXECUTING" without a real APPROVED Approval and
+ * a real READY Task gets rejected exactly the same as if state still said
+ * "AWAITING_APPROVAL" — the state field carries no authority.
+ *
+ * This function never sets Approval.status, never calls approveApproval(),
+ * and never calls createExecutionForTask() unless the actual Approval (if
+ * one was required) is APPROVED and the actual Task is READY.
+ */
+export async function resumeOrchestration(orchestrationId: string, actor: Actor): Promise<ResumeOrchestrationResult> {
+  const orchestration = await orchestrationRepository.findById(orchestrationId);
+  if (!orchestration) return { status: "NOT_FOUND" };
+
+  try {
+    assertSameAgency(actor.agencyId, orchestration.agencyId);
+  } catch (err) {
+    if (err instanceof ForbiddenError) return { status: "FORBIDDEN", reason: err.message };
+    throw err;
+  }
+
+  // Idempotent short-circuit: an execution was already attached by a prior
+  // resume call. This is checked via the attached id, never via
+  // orchestration.state, so it is safe even if state was never updated for
+  // some reason — presence of the id is the only thing that matters.
+  if (orchestration.executionId) {
+    return { status: "ALREADY_RESUMED", orchestration: toView(orchestration) };
+  }
+
+  if (!orchestration.taskId) {
+    return { status: "NOT_RESUMABLE", reason: "This orchestration never reached TASK_CREATED — there is no Task to resume." };
+  }
+
+  // Approval Engine remains the sole authority: if this orchestration
+  // recorded that approval was required (approvalId set during
+  // startOrchestration), the real, current Approval row is re-read here.
+  // Its status is never inferred from OrchestrationRecord.state.
+  if (orchestration.approvalId) {
+    const approval = await approvalRepository.findById(orchestration.approvalId);
+    if (!approval || approval.status !== "APPROVED") {
+      return {
+        status: "APPROVAL_PENDING",
+        reason: approval ? `Approval is ${approval.status}, not APPROVED.` : "Approval record not found.",
+        orchestration: toView(orchestration),
+      };
+    }
+  }
+
+  // Task Engine remains the sole authority: execution is only attempted
+  // once the real, current Task row is READY. Never inferred from
+  // Approval.status or OrchestrationRecord.state.
+  const task = await taskRepository.findById(orchestration.taskId);
+  if (task?.status !== "READY") {
+    return {
+      status: "TASK_NOT_READY",
+      reason: `Task is ${task?.status ?? "missing"}, not READY.`,
+      orchestration: toView(orchestration),
+    };
+  }
+
+  // Execution Engine remains the sole execution authority — this re-checks
+  // permission, agency, HIGH-risk-approval, and tool support itself, and is
+  // idempotent on (taskId, idempotencyKey): a second/concurrent resume call
+  // that reaches this line for the same Task gets the SAME Execution row
+  // back rather than a duplicate (see execution/executionService.ts and its
+  // own concurrency test) — no additional lock is introduced here.
+  const executionResult = await createExecutionForTask(orchestration.taskId, actor);
+  if (executionResult.status !== "CREATED") {
+    const reason = "reason" in executionResult ? executionResult.reason : executionResult.status;
+    const updated = await orchestrationRepository.updateState(orchestration.id, "FAILED", reason);
+    return { status: "EXECUTION_FAILED", reason, orchestration: toView(updated) };
+  }
+
+  await orchestrationRepository.attachExecution(orchestration.id, executionResult.execution.id);
+
+  // Smallest accurate state transition — never claim COMPLETED just because
+  // createExecutionForTask() returned successfully; the underlying
+  // Execution may still be PENDING/RUNNING/AWAITING_CALLBACK. Only mirror
+  // SUCCEEDED/FAILED when the Execution itself has already reached that
+  // terminal state synchronously; otherwise EXECUTING is the accurate,
+  // non-presumptuous label — no new OrchestrationState value is introduced.
+  const nextState = executionResult.execution.status === "SUCCEEDED" ? "COMPLETED" : executionResult.execution.status === "FAILED" ? "FAILED" : "EXECUTING";
+  const updated = await orchestrationRepository.updateState(orchestration.id, nextState, executionResult.execution.status === "FAILED" ? executionResult.execution.failureReason : undefined);
+
+  return { status: "RESUMED", orchestration: toView(updated) };
 }
 
 async function getOrCreateOrchestration(request: OrchestrationRequest): Promise<OrchestrationRecord> {

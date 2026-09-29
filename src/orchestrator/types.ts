@@ -48,3 +48,20 @@ export interface StartOrchestrationResult {
   orchestration: OrchestrationRecordView;
   plan: JarvisPlan | null;
 }
+
+/**
+ * The result of a resumeOrchestration() call — see docs/orchestrator.md
+ * "Resume boundary (v0.1b)". Every non-RESUMED/ALREADY_RESUMED variant means
+ * createExecutionForTask() was never called. None of these variants are
+ * derived from OrchestrationRecord.state — they reflect what was freshly
+ * read from Task/Approval/Execution at the moment of the call.
+ */
+export type ResumeOrchestrationResult =
+  | { status: "NOT_FOUND" }
+  | { status: "FORBIDDEN"; reason: string }
+  | { status: "NOT_RESUMABLE"; reason: string }
+  | { status: "APPROVAL_PENDING"; reason: string; orchestration: OrchestrationRecordView }
+  | { status: "TASK_NOT_READY"; reason: string; orchestration: OrchestrationRecordView }
+  | { status: "ALREADY_RESUMED"; orchestration: OrchestrationRecordView }
+  | { status: "EXECUTION_FAILED"; reason: string; orchestration: OrchestrationRecordView }
+  | { status: "RESUMED"; orchestration: OrchestrationRecordView };
