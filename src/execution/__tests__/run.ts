@@ -46,6 +46,12 @@ async function makeTask(agencyId: string, overrides: Partial<{ status: string; r
   });
 }
 
+async function approveTask(agencyId: string, actorId: string, taskId: string, riskLevel: string) {
+  return prisma.approval.create({
+    data: { agency: { connect: { id: agencyId } }, task: { connect: { id: taskId } }, status: "APPROVED", riskLevel, requestedBy: { connect: { id: actorId } }, decidedBy: { connect: { id: actorId } }, decidedAt: new Date() },
+  });
+}
+
 async function pollExecution(id: string, wantStatus: string, timeoutMs = 10_000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -181,6 +187,36 @@ async function main() {
       });
       const result = await createExecutionForTask(task.id, adminActor);
       assert.equal(result.status, "CREATED");
+    });
+
+    await test("MEDIUM social_media_management without an APPROVED approval returns APPROVAL_REQUIRED (capability-specific gate, reused from approvalPolicy, not hardcoded here)", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId);
+      const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
+      cleanupTaskIds.push(task.id);
+      const result = await createExecutionForTask(task.id, adminActor, { postId: fixture.post.id });
+      assert.equal(result.status, "APPROVAL_REQUIRED");
+    });
+
+    await test("MEDIUM social_media_management with an APPROVED approval proceeds to CREATED (still dry-run dispatch — publishReal remains unreachable)", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId);
+      const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
+      cleanupTaskIds.push(task.id);
+      await prisma.approval.create({
+        data: { agency: { connect: { id: agencyId } }, task: { connect: { id: task.id } }, status: "APPROVED", riskLevel: "MEDIUM", requestedBy: { connect: { id: actorId } }, decidedBy: { connect: { id: actorId } }, decidedAt: new Date() },
+      });
+      const result = await createExecutionForTask(task.id, adminActor, { postId: fixture.post.id });
+      assert.equal(result.status, "CREATED");
+      if (result.status === "CREATED") {
+        assert.equal(result.execution.status, "SUCCEEDED");
+        assert.equal(result.execution.toolKey, "blackos_api");
+      }
+    });
+
+    await test("non-social capability's execution gate is unaffected by the override (proves it's capability-scoped, not a global MEDIUM/gate change)", async () => {
+      const task = await makeTask(agencyId, { capabilityKey: "content_planning", riskLevel: "LOW" });
+      cleanupTaskIds.push(task.id);
+      const result = await createExecutionForTask(task.id, adminActor);
+      assert.notEqual(result.status, "APPROVAL_REQUIRED");
     });
 
     await test("concurrent duplicate calls for the same task race on the idempotency key, not a second Execution row", async () => {
@@ -416,6 +452,7 @@ async function main() {
       const fixture = await makeBlotatoPostFixture(agencyId);
       const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
       cleanupTaskIds.push(task.id);
+      await approveTask(agencyId, actorId, task.id, "MEDIUM");
 
       const originalFetch = globalThis.fetch;
       let fetchCalled = false;
@@ -448,6 +485,7 @@ async function main() {
     await test("blotato via Execution Engine: missing postId fails the dispatch (Task/Execution FAILED, not silently skipped)", async () => {
       const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
       cleanupTaskIds.push(task.id);
+      await approveTask(agencyId, actorId, task.id, "MEDIUM");
       const result = await createExecutionForTask(task.id, adminActor);
       assert.equal(result.status, "CREATED");
       if (result.status === "CREATED") {
@@ -461,6 +499,7 @@ async function main() {
       const fixture = await makeBlotatoPostFixture(otherAgency.id);
       const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
       cleanupTaskIds.push(task.id);
+      await approveTask(agencyId, actorId, task.id, "MEDIUM");
       const result = await createExecutionForTask(task.id, adminActor, { postId: fixture.post.id });
       assert.equal(result.status, "CREATED");
       if (result.status === "CREATED") {
@@ -473,6 +512,7 @@ async function main() {
       const fixture = await makeBlotatoPostFixture(agencyId);
       const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
       cleanupTaskIds.push(task.id);
+      await approveTask(agencyId, actorId, task.id, "MEDIUM");
       const first = await createExecutionForTask(task.id, adminActor, { postId: fixture.post.id });
       // Task is now IN_PROGRESS/COMPLETED, not READY — a second call correctly
       // hits the same INVALID_STATE guard proven for n8n's own concurrency

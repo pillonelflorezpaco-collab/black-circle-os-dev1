@@ -8,6 +8,7 @@ import { assertCan, assertSameAgency, ForbiddenError } from "@/lib/permissions";
 import { resolveCapabilityContext } from "@/jarvis/graphResolver";
 import { triggerTestWorkflow } from "./n8nClient";
 import { dryRunPublish } from "./blotatoAdapter";
+import { capabilityAlwaysRequiresApproval } from "@/jarvis/approvalPolicy";
 import type { IntentKey } from "@/jarvis/types";
 
 // v0.1a supported exactly one tool ("n8n", the zero-side-effect test
@@ -60,15 +61,18 @@ export async function createExecutionForTask(taskId: string, actor: Actor, opts?
     return { status: "INVALID_STATE", reason: "Task has no capabilityKey." };
   }
 
-  // HIGH risk requires a real APPROVED Approval for this exact task —
-  // re-checked here, never trusted from the caller (Task.status === READY
-  // already implies this in the current Approval Engine flow, but this
-  // execution-side check is what makes that invariant load-bearing rather
-  // than assumed).
-  if (task.riskLevel === "HIGH") {
+  // HIGH risk, or a capability the centralized approval policy always
+  // requires approval for regardless of risk (see approvalPolicy.ts —
+  // reused here, never duplicated, so this stays the single source of
+  // truth for "which tasks need an APPROVED Approval"), requires a real
+  // APPROVED Approval for this exact task — re-checked here, never trusted
+  // from the caller (Task.status === READY already implies this in the
+  // current Approval Engine flow, but this execution-side check is what
+  // makes that invariant load-bearing rather than assumed).
+  if (task.riskLevel === "HIGH" || capabilityAlwaysRequiresApproval(task.capabilityKey)) {
     const approved = await prisma.approval.findFirst({ where: { taskId: task.id, status: "APPROVED" } });
     if (!approved) {
-      return { status: "APPROVAL_REQUIRED", reason: "Task is HIGH risk and has no APPROVED Approval." };
+      return { status: "APPROVAL_REQUIRED", reason: "This task requires an APPROVED Approval before it can be executed." };
     }
   }
 

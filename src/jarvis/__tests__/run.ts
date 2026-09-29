@@ -280,7 +280,7 @@ async function main() {
   const approvalTaskIds: string[] = [];
   const approvalIds: string[] = [];
 
-  async function makeSyntheticTask(riskLevel: "LOW" | "MEDIUM" | "HIGH") {
+  async function makeSyntheticTask(riskLevel: "LOW" | "MEDIUM" | "HIGH", capabilityKey = "test_synthetic_capability") {
     const t = await prisma.task.create({
       data: {
         agency: { connect: { id: agencyId } },
@@ -289,7 +289,7 @@ async function main() {
         status: "PLANNED",
         priority: "NORMAL",
         source: "SYSTEM",
-        capabilityKey: "test_synthetic_capability",
+        capabilityKey,
         riskLevel,
         executionAllowed: false,
       },
@@ -311,6 +311,34 @@ async function main() {
 
     await test("policy: HIGH requires approval (synthetic)", () => {
       const d = evaluateApprovalRequirement("HIGH");
+      assert.equal(d.approvalRequired, true);
+    });
+
+    await test("policy: MEDIUM + social_media_management requires approval (capability-specific override)", async () => {
+      const d = evaluateApprovalRequirement("MEDIUM", "social_media_management");
+      assert.equal(d.approvalRequired, true);
+    });
+
+    await test("policy: MEDIUM + another capability is unaffected by the override", async () => {
+      const d = evaluateApprovalRequirement("MEDIUM", "content_planning");
+      assert.equal(d.approvalRequired, false);
+    });
+
+    await test("policy: MEDIUM + undefined capability keeps the existing behavior (backward compatible)", async () => {
+      const d = evaluateApprovalRequirement("MEDIUM");
+      assert.equal(d.approvalRequired, false);
+    });
+
+    await test("policy: LOW behavior is unaffected by the override, even for social_media_management", async () => {
+      // A hypothetical: if this capability were ever resolved as LOW instead
+      // of MEDIUM, the override still forces approval — the override is
+      // keyed on capability, not on risk level, by design.
+      const d = evaluateApprovalRequirement("LOW", "social_media_management");
+      assert.equal(d.approvalRequired, true, "the capability override applies regardless of risk level, not only MEDIUM");
+    });
+
+    await test("policy: HIGH behavior is unaffected by the override (already required approval anyway)", async () => {
+      const d = evaluateApprovalRequirement("HIGH", "social_media_management");
       assert.equal(d.approvalRequired, true);
     });
 
@@ -338,6 +366,41 @@ async function main() {
 
       const count = await prisma.approval.count({ where: { taskId: task.id } });
       assert.equal(count, 1);
+    });
+
+    await test("MEDIUM social_media_management task: createApprovalForTask creates a PENDING approval, moves task to WAITING_APPROVAL (capability override, not a MEDIUM-wide change)", async () => {
+      const task = await makeSyntheticTask("MEDIUM", "social_media_management");
+      const decision = await createApprovalForTask(task.id, actorId);
+      assert.equal(decision.approvalRequired, true);
+      assert.ok(decision.approval);
+      if (decision.approval) approvalIds.push(decision.approval.id);
+      assert.equal(decision.approval?.status, "PENDING");
+      assert.equal(decision.approval?.riskLevel, "MEDIUM", "the Approval snapshot still records the task's real MEDIUM risk — the override doesn't fabricate a HIGH risk level");
+
+      const reloadedTask = await prisma.task.findUnique({ where: { id: task.id } });
+      assert.equal(reloadedTask?.status, "WAITING_APPROVAL");
+    });
+
+    await test("MEDIUM non-social task still requires no approval (proves the override is capability-scoped, not a global MEDIUM change)", async () => {
+      const task = await makeSyntheticTask("MEDIUM", "test_synthetic_capability");
+      const decision = await createApprovalForTask(task.id, actorId);
+      assert.equal(decision.approvalRequired, false);
+      assert.equal(decision.approval, null);
+      const reloaded = await prisma.task.findUnique({ where: { id: task.id } });
+      assert.equal(reloaded?.status, "PLANNED");
+    });
+
+    await test("security: the approval decision is driven only by the persisted Task.capabilityKey — createApprovalForTask accepts no capabilityKey argument a caller could supply", async () => {
+      // Structural proof, not just behavioral: createApprovalForTask's own
+      // signature is (taskId, requestedById) — there is no third parameter
+      // through which a caller could pass a different capabilityKey to
+      // steer the decision. The only way the override fires is if it's
+      // already true on the real, previously-persisted Task row.
+      const task = await makeSyntheticTask("MEDIUM", "social_media_management");
+      // @ts-expect-error — intentionally probing that a 3rd argument has no effect / doesn't typecheck as an override channel
+      const decision = await createApprovalForTask(task.id, actorId, "content_planning");
+      assert.equal(decision.approvalRequired, true, "a bogus extra argument must not be able to downgrade the real persisted capability's approval requirement");
+      if (decision.approval) approvalIds.push(decision.approval.id);
     });
 
     await test("repeated HIGH evaluation on the same task does not create a duplicate approval", async () => {

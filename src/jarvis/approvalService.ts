@@ -30,7 +30,10 @@ export async function createApprovalForTask(taskId: string, requestedById: strin
     throw new Error(`Task ${taskId} has no valid riskLevel; cannot evaluate approval requirement.`);
   }
 
-  const decision = evaluateApprovalRequirement(task.riskLevel as RiskLevel);
+  // capabilityKey comes only from the persisted Task row — never from a
+  // caller-supplied value — so the approval decision cannot be steered by
+  // anything other than what Jarvis Core actually resolved and persisted.
+  const decision = evaluateApprovalRequirement(task.riskLevel as RiskLevel, task.capabilityKey ?? undefined);
   if (!decision.approvalRequired) {
     return { approvalRequired: false, riskLevel: decision.riskLevel, reason: decision.reason, approval: null };
   }
