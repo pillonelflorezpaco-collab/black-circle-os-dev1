@@ -15,6 +15,7 @@ import { startOrchestration, resumeOrchestration, __testing } from "../orchestra
 import { orchestrationRepository } from "@/repositories/orchestration.repository";
 import { getRecentOrchestrations } from "@/services/commandCenter.service";
 import { createEngineApiKey } from "@/lib/engineAuth";
+import { encryptSecret } from "@/lib/crypto";
 import { POST as postOrchestratorRoute } from "@/app/api/engine/orchestrator/request/route";
 import type { OrchestrationRequest } from "../types";
 import type { JarvisPlan } from "@/jarvis/types";
@@ -280,6 +281,52 @@ async function main() {
 
       const execution = await prisma.execution.findUnique({ where: { id: result.orchestration.executionId! } });
       assert.equal(execution?.taskId, taskId);
+    });
+
+    await test("end-to-end: real social_media_management request through startOrchestration()/resumeOrchestration() dispatches Blotato dry-run with zero synthetic plan injection (closes the postId-threading gap)", async () => {
+      // No synthetic plan here — this drives the REAL planJarvisRequest()
+      // (real intent resolution, real Neo4j graph, real entity resolution
+      // via metadata.postId) through the exact same startOrchestration()/
+      // resumeOrchestration() calls a production caller would use, with no
+      // special-casing. Proves createExecutionForTask() deriving postId
+      // from Task.entityId (not a caller-supplied parameter) actually
+      // reaches the Orchestrator's unmodified call sites.
+      const model = await prisma.model.create({ data: { agencyId, name: `[test] e2e social model ${Date.now()}` } });
+      const video = await prisma.video.create({ data: { agencyId, modelId: model.id, title: "[test] e2e social video", caption: "Real end-to-end caption.", driveUrl: "https://example.invalid/e2e.mp4" } });
+      const blotatoAccount = await prisma.blotatoAccount.create({ data: { agencyId, label: "[test] e2e blotato account", apiKey: encryptSecret("test-fake-e2e-key") } });
+      const socialAccount = await prisma.socialAccount.create({ data: { modelId: model.id, source: "BLOTATO", platform: "INSTAGRAM", blotatoAccountRef: "e2e-account-ref", blotatoAccountId: blotatoAccount.id } });
+      const post = await prisma.post.create({ data: { videoId: video.id, socialAccountId: socialAccount.id, platform: "INSTAGRAM", scheduledTime: new Date(), agencyId } });
+
+      try {
+        const requestId = `test-e2e-social-${Date.now()}`;
+        const start = await startOrchestration({ message: "manage social media for this post", agencyId, actorId, source: "internal", requestId, metadata: { postId: post.id } }, adminActor);
+        assert.equal(start.orchestration.state, "AWAITING_APPROVAL", "social_media_management is MEDIUM but the capability-specific override still requires approval");
+        assert.ok(start.orchestration.taskId);
+        assert.ok(start.orchestration.approvalId);
+
+        // A human approves — the same real approveApproval() a dashboard action would call, not a shortcut.
+        const { approveApproval } = await import("@/jarvis/approvalService");
+        const approveResult = await approveApproval(start.orchestration.approvalId!, adminActor);
+        assert.equal(approveResult.status, "OK");
+
+        const resumeResult = await resumeOrchestration(start.orchestration.id, adminActor);
+        assert.equal(resumeResult.status, "RESUMED");
+        if (resumeResult.status === "RESUMED") {
+          assert.ok(resumeResult.orchestration.executionId, "expected a real Execution to have been dispatched, with postId derived from the Task's own entityId — no caller-supplied parameter involved");
+          const execution = await prisma.execution.findUnique({ where: { id: resumeResult.orchestration.executionId! } });
+          assert.equal(execution?.status, "SUCCEEDED", "the dry-run should validate successfully against this fully-formed fixture");
+          assert.equal(execution?.toolKey, "blackos_api");
+        }
+
+        cleanupOrchestrationIds.push(start.orchestration.id);
+        if (start.orchestration.taskId) cleanupTaskIds.push(start.orchestration.taskId);
+      } finally {
+        await prisma.post.delete({ where: { id: post.id } }).catch(() => {});
+        await prisma.socialAccount.delete({ where: { id: socialAccount.id } }).catch(() => {});
+        await prisma.blotatoAccount.delete({ where: { id: blotatoAccount.id } }).catch(() => {});
+        await prisma.video.delete({ where: { id: video.id } }).catch(() => {});
+        await prisma.model.delete({ where: { id: model.id } }).catch(() => {});
+      }
     });
 
     await test("resume: PENDING approval → execution is NOT created, Approval remains PENDING (no auto-approval)", async () => {

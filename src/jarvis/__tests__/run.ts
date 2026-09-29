@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { planJarvisRequest } from "../core";
+import { resolveEntities } from "../entityResolver";
 import { createTaskFromJarvisPlan } from "../taskService";
 import { evaluateApprovalRequirement } from "../approvalPolicy";
 import { createApprovalForTask, approveApproval, rejectApproval } from "../approvalService";
@@ -235,6 +236,54 @@ async function main() {
       const plan = await planJarvisRequest({ ...base, message: "What's the weather like today" });
       const result = await createTaskFromJarvisPlan({ ...base, message: "What's the weather like today" }, plan);
       assert.equal(result.status, "REJECTED");
+    });
+
+    await test("entity resolution: metadata.postId resolves a real Post, scoped to the agency", async () => {
+      const model = await prisma.model.create({ data: { agencyId, name: `[test] entity post model ${Date.now()}` } });
+      const video = await prisma.video.create({ data: { agencyId, modelId: model.id, title: "[test] entity post video", caption: "caption" } });
+      const socialAccount = await prisma.socialAccount.create({ data: { modelId: model.id, source: "NATIVE", platform: "INSTAGRAM" } });
+      const post = await prisma.post.create({ data: { videoId: video.id, socialAccountId: socialAccount.id, platform: "INSTAGRAM", scheduledTime: new Date(), agencyId } });
+      try {
+        const result = await resolveEntities("publish this post", agencyId, { postId: post.id });
+        assert.equal(result.status, "RESOLVED");
+        if (result.status === "RESOLVED") {
+          assert.equal(result.entities[0].type, "post");
+          assert.equal(result.entities[0].id, post.id);
+        }
+      } finally {
+        await prisma.post.delete({ where: { id: post.id } }).catch(() => {});
+        await prisma.socialAccount.delete({ where: { id: socialAccount.id } }).catch(() => {});
+        await prisma.video.delete({ where: { id: video.id } }).catch(() => {});
+        await prisma.model.delete({ where: { id: model.id } }).catch(() => {});
+      }
+    });
+
+    await test("entity resolution: metadata.postId for a nonexistent Post returns NOT_FOUND, never guesses", async () => {
+      const result = await resolveEntities("publish this post", agencyId, { postId: "does-not-exist" });
+      assert.equal(result.status, "NOT_FOUND");
+    });
+
+    await test("entity resolution: metadata.postId belonging to another agency is indistinguishable from nonexistent (no cross-agency leak)", async () => {
+      const otherAgencyForPost = await prisma.agency.create({ data: { name: "[test] entity resolver other agency", slug: `test-entity-other-agency-${Date.now()}` } });
+      const model = await prisma.model.create({ data: { agencyId: otherAgencyForPost.id, name: `[test] cross-agency post model ${Date.now()}` } });
+      const video = await prisma.video.create({ data: { agencyId: otherAgencyForPost.id, modelId: model.id, title: "[test] cross-agency post video", caption: "caption" } });
+      const socialAccount = await prisma.socialAccount.create({ data: { modelId: model.id, source: "NATIVE", platform: "INSTAGRAM" } });
+      const post = await prisma.post.create({ data: { videoId: video.id, socialAccountId: socialAccount.id, platform: "INSTAGRAM", scheduledTime: new Date(), agencyId: otherAgencyForPost.id } });
+      try {
+        const result = await resolveEntities("publish this post", agencyId, { postId: post.id });
+        assert.equal(result.status, "NOT_FOUND", "a Post from another agency must resolve identically to a nonexistent one");
+      } finally {
+        await prisma.post.delete({ where: { id: post.id } }).catch(() => {});
+        await prisma.socialAccount.delete({ where: { id: socialAccount.id } }).catch(() => {});
+        await prisma.video.delete({ where: { id: video.id } }).catch(() => {});
+        await prisma.model.delete({ where: { id: model.id } }).catch(() => {});
+        await prisma.agency.delete({ where: { id: otherAgencyForPost.id } }).catch(() => {});
+      }
+    });
+
+    await test("entity resolution: without metadata.postId, existing Model text-matching behavior is unchanged", async () => {
+      const result = await resolveEntities("Prepare a content strategy for NonexistentModelName123", agencyId);
+      assert.equal(result.status, "NOT_FOUND");
     });
 
     await test("structurally invalid plan does not create a task", async () => {

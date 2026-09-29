@@ -42,7 +42,7 @@ export type CreateExecutionResult =
  * re-derived from the Task row and the Neo4j graph. See
  * docs/execution-engine.md §5.
  */
-export async function createExecutionForTask(taskId: string, actor: Actor, opts?: { postId?: string }): Promise<CreateExecutionResult> {
+export async function createExecutionForTask(taskId: string, actor: Actor): Promise<CreateExecutionResult> {
   const task = await taskRepository.findById(taskId);
   if (!task) return { status: "NOT_FOUND" };
 
@@ -132,7 +132,15 @@ export async function createExecutionForTask(taskId: string, actor: Actor, opts?
   });
 
   if (toolKey === "blackos_api") {
-    return dispatchBlotatoDryRun(execution, task, opts?.postId);
+    // postId is derived from the Task row itself (entityType === "POST"),
+    // never accepted as a caller-supplied parameter — consistent with this
+    // function's own stated discipline of re-deriving everything from the
+    // Task row. This is also what makes this reachable through the
+    // Orchestrator's existing, unmodified createExecutionForTask(taskId, actor)
+    // call sites (orchestratorService.ts) with zero changes there — see
+    // docs/social-media-execution.md.
+    const postId = task.entityType === "POST" ? task.entityId : null;
+    return dispatchBlotatoDryRun(execution, task, postId ?? undefined);
   }
 
   const trigger = await triggerTestWorkflow({
@@ -174,7 +182,7 @@ async function dispatchBlotatoDryRun(execution: Execution, task: { id: string; t
     const failed = await executionRepository.update(execution.id, {
       status: "FAILED",
       finishedAt: new Date(),
-      failureReason: "postId is required to execute a social_media_management task.",
+      failureReason: "Task has no entityType=\"POST\" reference — a social_media_management task must reference the specific Post to publish.",
     });
     await taskRepository.update(task.id, { status: "FAILED" });
     await eventRepository.create({

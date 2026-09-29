@@ -77,7 +77,7 @@ export async function planJarvisRequest(request: JarvisRequest): Promise<JarvisP
   steps.push(`INTENT_RESOLVED:${intent.type}`);
 
   // ENTITY RESOLUTION — Postgres, exact match only, never guesses.
-  const entityResult = await resolveEntities(message, request.agencyId);
+  const entityResult = await resolveEntities(message, request.agencyId, request.metadata);
   if (entityResult.status === "NOT_FOUND") {
     log("JARVIS_ENTITY_UNRESOLVED", { candidate: entityResult.candidate });
     return {

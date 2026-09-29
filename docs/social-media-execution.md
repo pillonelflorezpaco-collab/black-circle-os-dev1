@@ -95,11 +95,37 @@ moot today since `publishReal()` is unwired.
 
 ## Input contract
 
-`createExecutionForTask(taskId, actor, opts?: { postId?: string })` — one
-new optional parameter, additive and backward-compatible; the `n8n` path
-ignores it entirely. A `social_media_management` Task dispatched without a
-`postId` fails closed (`Execution`/`Task` → `FAILED`, clear reason) rather
+**Updated:** `postId` is derived from the `Task` row itself
+(`task.entityType === "POST" ? task.entityId : null`), never accepted as a
+caller-supplied parameter — `createExecutionForTask(taskId, actor)`'s
+signature is unchanged from before this capability existed. This closes a
+real gap found after the initial implementation: the Orchestrator's own
+`createExecutionForTask(taskId, actor)` call sites
+(`orchestratorService.ts`, both `continueFromPlan()` and
+`resumeOrchestration()`) never had a way to pass an `opts.postId` — so a
+`social_media_management` Task could never actually be dispatched through
+the only real production path, even after being correctly approval-gated.
+Deriving `postId` from the Task row instead — the same "never trust the
+caller, always re-derive from the Task row" discipline this function
+already documents for tool/workflow/risk/approval — fixes this with zero
+changes to `orchestratorService.ts`.
+
+A `social_media_management` Task with no `entityType === "POST"` reference
+still fails closed (`Execution`/`Task` → `FAILED`, clear reason) rather
 than silently skipping or guessing.
+
+### Entity resolution: how a Task gets its Post reference
+
+`EntityType` (`src/jarvis/types.ts`) now includes `"post"` alongside
+`"model"`. `entityResolver.ts`'s `resolveEntities(message, agencyId,
+metadata?)` resolves a Post **only** via an explicit `metadata.postId` —
+never by free-text matching (a Post has no name to guess from, unlike a
+Model). A nonexistent `postId` and one belonging to another agency both
+resolve identically to `NOT_FOUND` — the same no-leak discipline as
+`blotatoAdapter.ts`'s own Post lookup. `jarvis/core.ts` passes
+`request.metadata` through unchanged; `taskService.createTaskFromJarvisPlan`
+needed no change at all — its existing `entity.type.toUpperCase()` logic
+was already generic.
 
 ## Observability
 

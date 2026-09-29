@@ -22,7 +22,14 @@ export interface ResolvedIntent {
   confidence: number;
 }
 
-export type EntityType = "model";
+// "post" added to close the social-media-execution dispatch gap: a Task
+// needs to reference a specific Post for createExecutionForTask() to
+// derive `postId` for the Blotato adapter (see executionService.ts and
+// docs/social-media-execution.md). Resolved only via an explicit
+// metadata.postId — never by free-text matching (a Post has no "name" the
+// way a Model does, so guessing one from a message would violate
+// entityResolver.ts's own exact-match-only, never-guess discipline).
+export type EntityType = "model" | "post";
 
 export interface ResolvedEntity {
   type: EntityType;

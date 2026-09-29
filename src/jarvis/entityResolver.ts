@@ -35,12 +35,38 @@ function extractCandidateNames(message: string): string[] {
 }
 
 /**
+ * Resolves a Post explicitly referenced via `metadata.postId` — never by
+ * free-text matching (a Post has no name to match against, unlike a
+ * Model). Agency-scoped: a postId belonging to another agency resolves
+ * identically to a nonexistent one (NOT_FOUND), matching the no-leak
+ * discipline already established in blotatoAdapter.ts's own Post lookup.
+ * `name` is synthesized for display only (Post itself has no name field).
+ */
+async function resolvePostEntity(postId: string, agencyId: string): Promise<EntityResolutionResult> {
+  const post = await prisma.post.findUnique({
+    where: { id: postId },
+    select: { id: true, agencyId: true, platform: true, video: { select: { title: true } } },
+  });
+  if (!post || post.agencyId !== agencyId) {
+    return { status: "NOT_FOUND", candidate: postId };
+  }
+  return { status: "RESOLVED", entities: [{ type: "post", id: post.id, name: `${post.video.title} (${post.platform})` }] };
+}
+
+/**
  * Resolves a Model referenced by name in the message, scoped to the
  * requesting agency. Exact (case-insensitive) match only — never fuzzy —
  * so a misspelled or different name correctly falls through to NOT_FOUND
  * instead of guessing.
+ *
+ * If `metadata.postId` is present, it takes priority over text-based Model
+ * extraction — an explicit reference is never overridden by a guess.
  */
-export async function resolveEntities(message: string, agencyId: string): Promise<EntityResolutionResult> {
+export async function resolveEntities(message: string, agencyId: string, metadata?: Record<string, unknown>): Promise<EntityResolutionResult> {
+  if (typeof metadata?.postId === "string" && metadata.postId.length > 0) {
+    return resolvePostEntity(metadata.postId, agencyId);
+  }
+
   const candidates = extractCandidateNames(message);
   if (candidates.length === 0) {
     return { status: "NOT_ATTEMPTED" };
