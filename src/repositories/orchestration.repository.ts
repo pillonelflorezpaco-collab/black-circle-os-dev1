@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import type { OrchestrationState, Prisma } from "@prisma/client";
 
 // The only module allowed to persist OrchestrationRecord — mirrors the
 // repository pattern used by task/approval/execution repositories. No other
@@ -53,5 +53,25 @@ export const orchestrationRepository = {
 
   attachExecution(id: string, executionId: string) {
     return prisma.orchestrationRecord.update({ where: { id }, data: { executionId } });
+  },
+
+  /**
+   * Command Center observability (v0.1d) — a bounded, newest-first,
+   * agency-scoped read. Same shape as getRecentTasks/getPendingApprovals in
+   * commandCenter.service.ts: no cursor pagination, no arbitrary filters,
+   * just the one dimension (state) an operator would actually want to slice
+   * by. `agencyId: null` intentionally returns cross-agency results — that
+   * mirrors the existing Command Center convention for Super Admins acting
+   * without a selected agency (see getEffectiveAgencyId()), not a bug.
+   */
+  findRecent(agencyId: string | null, opts?: { state?: OrchestrationState; take?: number }) {
+    return prisma.orchestrationRecord.findMany({
+      where: {
+        ...(agencyId ? { agencyId } : {}),
+        ...(opts?.state ? { state: opts.state } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: opts?.take ?? 8,
+    });
   },
 };

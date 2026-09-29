@@ -1,5 +1,5 @@
 import { getEffectiveAgencyId } from "@/lib/agencyContext";
-import { getCommandCenterCounts, getRecentTasks, getPendingApprovals, getRecentEvents, getAttentionCounts } from "@/services/commandCenter.service";
+import { getCommandCenterCounts, getRecentTasks, getPendingApprovals, getRecentEvents, getAttentionCounts, getRecentOrchestrations } from "@/services/commandCenter.service";
 import { getOrganizationGraph } from "@/services/organization.service";
 import { SystemOverview } from "@/components/blackos/CommandCenter/SystemOverview";
 import { JarvisPanel } from "@/components/blackos/CommandCenter/JarvisPanel";
@@ -8,17 +8,19 @@ import { TaskPanel } from "@/components/blackos/CommandCenter/TaskPanel";
 import { ApprovalPanel } from "@/components/blackos/CommandCenter/ApprovalPanel";
 import { ActivityPanel } from "@/components/blackos/CommandCenter/ActivityPanel";
 import { OrganizationPanel } from "@/components/blackos/CommandCenter/OrganizationPanel";
+import { OrchestrationPanel } from "@/components/blackos/CommandCenter/OrchestrationPanel";
 import type { OrganizationGraphData } from "@/types/organization";
 
 export default async function CommandCenterPage() {
   const agencyId = await getEffectiveAgencyId();
 
-  const [counts, attention, tasks, approvals, events, orgResult] = await Promise.all([
+  const [counts, attention, tasks, approvals, events, orchestrations, orgResult] = await Promise.all([
     getCommandCenterCounts(agencyId),
     getAttentionCounts(agencyId),
     getRecentTasks(agencyId),
     getPendingApprovals(agencyId),
     getRecentEvents(agencyId),
+    getRecentOrchestrations(agencyId),
     getOrganizationGraph()
       .then((graph) => ({ graph, error: undefined }) as { graph: OrganizationGraphData; error?: string })
       .catch((err) => ({ graph: null, error: err instanceof Error ? err.message : "Neo4j unavailable." }) as { graph: null; error: string }),
@@ -63,6 +65,10 @@ export default async function CommandCenterPage() {
       <div className="bc-grid2b">
         <TaskPanel tasks={tasks} />
         <ApprovalPanel approvals={approvals} />
+      </div>
+
+      <div style={{ marginTop: 22 }}>
+        <OrchestrationPanel orchestrations={orchestrations} />
       </div>
 
       <div className="bc-section-title">

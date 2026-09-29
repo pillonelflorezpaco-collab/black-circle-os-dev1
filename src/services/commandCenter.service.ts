@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { orchestrationRepository } from "@/repositories/orchestration.repository";
+import type { OrchestrationState } from "@prisma/client";
 
 /**
  * Read-only data access for the BlackOS Command Center. Queries the same
@@ -74,4 +76,42 @@ export async function getAttentionCounts(agencyId: string | null) {
     prisma.task.count({ where: { ...where, status: "FAILED" } }),
   ]);
   return { pendingApprovals, blockedTasks, failedTasks };
+}
+
+/**
+ * Jarvis Orchestrator observability (v0.1d) — see docs/orchestrator.md
+ * "Command Center observability". Read-only: calls
+ * orchestrationRepository.findRecent() only, never
+ * startOrchestration()/resumeOrchestration() or any mutating engine
+ * function. Returns a thin projection (OrchestrationRecordView's shape,
+ * field-renamed for display) — never the raw Prisma OrchestrationRecord —
+ * and never duplicates the referenced Task/Approval/Execution's own mutable
+ * fields; the panel shows only whether each is present (via the id), which
+ * is exactly what the OrchestrationRecord itself already stores.
+ */
+export interface RecentOrchestration {
+  orchestrationId: string;
+  requestId: string | null;
+  state: OrchestrationState;
+  taskId: string | null;
+  approvalId: string | null;
+  executionId: string | null;
+  failureReason: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export async function getRecentOrchestrations(agencyId: string | null, opts?: { state?: OrchestrationState; take?: number }): Promise<RecentOrchestration[]> {
+  const records = await orchestrationRepository.findRecent(agencyId, opts);
+  return records.map((record) => ({
+    orchestrationId: record.id,
+    requestId: record.requestId,
+    state: record.state,
+    taskId: record.taskId,
+    approvalId: record.approvalId,
+    executionId: record.executionId,
+    failureReason: record.failureReason,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  }));
 }

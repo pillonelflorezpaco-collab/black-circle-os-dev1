@@ -12,6 +12,8 @@ import path from "node:path";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { startOrchestration, resumeOrchestration, __testing } from "../orchestratorService";
+import { orchestrationRepository } from "@/repositories/orchestration.repository";
+import { getRecentOrchestrations } from "@/services/commandCenter.service";
 import { createEngineApiKey } from "@/lib/engineAuth";
 import { POST as postOrchestratorRoute } from "@/app/api/engine/orchestrator/request/route";
 import type { OrchestrationRequest } from "../types";
@@ -573,6 +575,89 @@ async function main() {
       // OrchestrationRecord tables directly.
       const prismaCalls = source.match(/prisma\.\w+\./g) ?? [];
       assert.deepEqual(new Set(prismaCalls), new Set(["prisma.user."]), "route must not perform any Prisma access beyond the actor lookup");
+    });
+
+    // ================================================================
+    // V0.1d — Command Center observability (orchestrationRepository.findRecent
+    // / commandCenter.service.getRecentOrchestrations)
+    // ================================================================
+
+    await test("observability: findRecent returns recent orchestrations for the agency, newest first", async () => {
+      const a = await prisma.orchestrationRecord.create({ data: { agencyId, requestId: `test-obs-${Date.now()}-a` } });
+      await new Promise((r) => setTimeout(r, 5));
+      const b = await prisma.orchestrationRecord.create({ data: { agencyId, requestId: `test-obs-${Date.now()}-b` } });
+      cleanupOrchestrationIds.push(a.id, b.id);
+
+      const recent = await orchestrationRepository.findRecent(agencyId, { take: 2 });
+      assert.equal(recent[0].id, b.id, "newest (b) must come first");
+      assert.equal(recent[1].id, a.id);
+    });
+
+    await test("observability: Agency A cannot receive Agency B's orchestration records", async () => {
+      const mine = await prisma.orchestrationRecord.create({ data: { agencyId, requestId: `test-obs-${Date.now()}-c` } });
+      const theirs = await prisma.orchestrationRecord.create({ data: { agencyId: otherAgency.id, requestId: `test-obs-${Date.now()}-d` } });
+      cleanupOrchestrationIds.push(mine.id, theirs.id);
+
+      const recent = await orchestrationRepository.findRecent(agencyId, { take: 50 });
+      assert.ok(recent.every((r) => r.agencyId === agencyId), "must never return another agency's records");
+      assert.ok(!recent.some((r) => r.id === theirs.id));
+    });
+
+    await test("observability: state filter narrows results", async () => {
+      const pending = await prisma.orchestrationRecord.create({ data: { agencyId, requestId: `test-obs-${Date.now()}-e`, state: "AWAITING_APPROVAL" } });
+      const done = await prisma.orchestrationRecord.create({ data: { agencyId, requestId: `test-obs-${Date.now()}-f`, state: "COMPLETED" } });
+      cleanupOrchestrationIds.push(pending.id, done.id);
+
+      const filtered = await orchestrationRepository.findRecent(agencyId, { state: "AWAITING_APPROVAL", take: 50 });
+      assert.ok(filtered.some((r) => r.id === pending.id));
+      assert.ok(!filtered.some((r) => r.id === done.id));
+    });
+
+    await test("observability: take limit is respected", async () => {
+      const ids = [] as string[];
+      for (let i = 0; i < 4; i++) {
+        const r = await prisma.orchestrationRecord.create({ data: { agencyId, requestId: `test-obs-${Date.now()}-take-${i}` } });
+        ids.push(r.id);
+      }
+      cleanupOrchestrationIds.push(...ids);
+
+      const limited = await orchestrationRepository.findRecent(agencyId, { take: 2 });
+      assert.equal(limited.length, 2);
+    });
+
+    await test("observability: null agencyId matches existing Command Center cross-agency convention", async () => {
+      const record = await prisma.orchestrationRecord.create({ data: { agencyId, requestId: `test-obs-${Date.now()}-g` } });
+      cleanupOrchestrationIds.push(record.id);
+
+      const crossAgency = await orchestrationRepository.findRecent(null, { take: 200 });
+      assert.ok(crossAgency.some((r) => r.id === record.id), "agencyId: null must behave like getRecentTasks(null) — no agency filter applied");
+    });
+
+    await test("observability: getRecentOrchestrations returns a safe thin projection, no raw Prisma object", async () => {
+      const record = await prisma.orchestrationRecord.create({ data: { agencyId, requestId: `test-obs-${Date.now()}-h`, state: "FAILED", failureReason: "synthetic test failure" } });
+      cleanupOrchestrationIds.push(record.id);
+
+      const results = await getRecentOrchestrations(agencyId, { take: 50 });
+      const view = results.find((r) => r.orchestrationId === record.id);
+      assert.ok(view);
+      assert.deepEqual(Object.keys(view!).sort(), ["approvalId", "createdAt", "executionId", "failureReason", "orchestrationId", "requestId", "state", "taskId", "updatedAt"].sort());
+      assert.equal(view!.state, "FAILED");
+      assert.equal(view!.failureReason, "synthetic test failure");
+      // must never carry an `agencyId` field or any nested task/approval/execution object
+      assert.ok(!("agencyId" in view!));
+      assert.ok(!("task" in view!) && !("approval" in view!) && !("execution" in view!));
+    });
+
+    await test("observability: findRecent/getRecentOrchestrations perform no mutation", async () => {
+      const record = await prisma.orchestrationRecord.create({ data: { agencyId, requestId: `test-obs-${Date.now()}-i`, state: "TASK_CREATED" } });
+      cleanupOrchestrationIds.push(record.id);
+
+      await orchestrationRepository.findRecent(agencyId, { take: 50 });
+      await getRecentOrchestrations(agencyId, { take: 50 });
+
+      const after = await prisma.orchestrationRecord.findUnique({ where: { id: record.id } });
+      assert.equal(after?.state, "TASK_CREATED", "an observability read must never change state");
+      assert.equal(after?.updatedAt.getTime(), record.updatedAt.getTime(), "an observability read must never touch updatedAt");
     });
 
   } finally {

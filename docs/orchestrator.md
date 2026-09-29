@@ -215,3 +215,37 @@ it either — introducing scope enforcement only here would be a new,
 inconsistent authorization mechanism rather than a reuse of an established
 one. This is a pre-existing gap across all engine routes, not introduced by
 v0.1c.
+
+## V0.1d — Command Center observability
+
+Recent `OrchestrationRecord`s are now visible on the existing Command Center
+page (`OrchestrationPanel`), server-rendered exactly like every other panel
+there — **no HTTP API route was added or is needed**:
+
+```
+command-center/page.tsx → commandCenter.service.ts (getRecentOrchestrations)
+                         → orchestration.repository.ts (findRecent)
+                         → PostgreSQL
+```
+
+- **Read-only:** `findRecent()` is a plain `findMany`; nothing in this layer
+  calls `startOrchestration()`, `resumeOrchestration()`, or any other
+  mutating engine function.
+- **Agency isolation:** scoped by the page's existing `getEffectiveAgencyId()`
+  result, the same value already passed to `getRecentTasks`/
+  `getPendingApprovals`/`getRecentEvents` — no new authorization mechanism,
+  no client-supplied agency parameter. `agencyId: null` (Super Admin, no
+  agency selected) intentionally returns cross-agency results, matching the
+  existing convention for every other panel.
+- **Filtering:** one optional `state` filter (`OrchestrationState`) plus a
+  bounded `take` (default 8) — no cursor pagination, no other filters.
+- **Presentation:** `OrchestrationState` is shown via a display-only label
+  map in `OrchestrationPanel.tsx` (e.g. `AWAITING_APPROVAL` → "Awaiting
+  approval") — the database value remains authoritative; this is not a
+  second state system.
+- **No new event type:** the existing `SystemEventType` values already cover
+  every orchestration lifecycle moment that emits an event; this phase adds
+  no `orchestrationId` metadata and no new event, per the standing "Events"
+  section above.
+- **No schema change:** `OrchestrationRecord` already had every field and
+  index this needed.
