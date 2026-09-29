@@ -10,6 +10,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { createExecutionForTask, handleN8nCallback } from "../executionService";
+import { validateAndBuildRequest, dryRunPublish, publishReal } from "../blotatoAdapter";
+import { encryptSecret } from "@/lib/crypto";
 
 let passed = 0;
 let failed = 0;
@@ -66,16 +68,76 @@ async function main() {
 
   const otherAgency = await prisma.agency.create({ data: { name: "[test] other agency", slug: `test-other-agency-${Date.now()}` } });
 
-  const [tasksBefore, executionsBefore, stepsBefore, approvalsBefore, eventsBefore] = await Promise.all([
+  const [tasksBefore, executionsBefore, stepsBefore, approvalsBefore, eventsBefore, modelsBefore, postsBefore, blotatoAccountsBefore] = await Promise.all([
     prisma.task.count(),
     prisma.execution.count(),
     prisma.executionStep.count(),
     prisma.approval.count(),
     prisma.event.count(),
+    prisma.model.count(),
+    prisma.post.count(),
+    prisma.blotatoAccount.count(),
   ]);
 
   const cleanupTaskIds: string[] = [];
+  const cleanupModelIds: string[] = [];
+  const cleanupBlotatoAccountIds: string[] = [];
   const testStartedAt = new Date();
+
+  /**
+   * Full Blotato fixture chain: Model → Video → Post, SocialAccount →
+   * BlotatoAccount. `apiKey` is encrypted with the real crypto module using
+   * a fake test value — never a real credential.
+   */
+  async function makeBlotatoPostFixture(
+    forAgencyId: string,
+    overrides: Partial<{ isActive: boolean; source: "BLOTATO" | "NATIVE"; caption: string | null; driveUrl: string | null; blotatoAccountRef: string | null; hasBlotatoAccount: boolean }> = {},
+  ) {
+    const model = await prisma.model.create({ data: { agencyId: forAgencyId, name: `[test] blotato model ${Date.now()}-${Math.random().toString(36).slice(2)}` } });
+    cleanupModelIds.push(model.id);
+
+    const video = await prisma.video.create({
+      data: {
+        agency: { connect: { id: forAgencyId } },
+        model: { connect: { id: model.id } },
+        title: "[test] blotato video",
+        caption: overrides.caption === undefined ? "Test caption for dry-run." : overrides.caption,
+        driveUrl: overrides.driveUrl === undefined ? "https://example.invalid/test-media.mp4" : overrides.driveUrl,
+      },
+    });
+
+    let blotatoAccountId: string | null = null;
+    if (overrides.hasBlotatoAccount !== false) {
+      const blotatoAccount = await prisma.blotatoAccount.create({
+        data: { agencyId: forAgencyId, label: "[test] blotato account", apiKey: encryptSecret("test-fake-blotato-key") },
+      });
+      cleanupBlotatoAccountIds.push(blotatoAccount.id);
+      blotatoAccountId = blotatoAccount.id;
+    }
+
+    const socialAccount = await prisma.socialAccount.create({
+      data: {
+        model: { connect: { id: model.id } },
+        source: overrides.source ?? "BLOTATO",
+        platform: "INSTAGRAM",
+        isActive: overrides.isActive ?? true,
+        blotatoAccountRef: overrides.blotatoAccountRef === undefined ? "test-account-ref" : overrides.blotatoAccountRef,
+        ...(blotatoAccountId ? { blotatoAccount: { connect: { id: blotatoAccountId } } } : {}),
+      },
+    });
+
+    const post = await prisma.post.create({
+      data: {
+        video: { connect: { id: video.id } },
+        socialAccount: { connect: { id: socialAccount.id } },
+        platform: "INSTAGRAM",
+        scheduledTime: new Date(),
+        agency: { connect: { id: forAgencyId } },
+      },
+    });
+
+    return { model, video, socialAccount, post };
+  }
 
   try {
     await test("task not found returns NOT_FOUND", async () => {
@@ -142,8 +204,12 @@ async function main() {
       assert.equal(count, 1);
     });
 
-    await test("unsupported tool (blackos_api) returns UNSUPPORTED_TOOL", async () => {
-      const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
+    await test("unsupported tool key (not n8n or blackos_api) still returns UNSUPPORTED_TOOL", async () => {
+      // No capability in the real graph resolves to a third tool key today —
+      // this documents the guard's continued existence for whatever isn't
+      // n8n/blackos_api, exercised the same way the original test did before
+      // blackos_api became supported.
+      const task = await makeTask(agencyId, { capabilityKey: "does_not_exist_in_graph" });
       cleanupTaskIds.push(task.id);
       const result = await createExecutionForTask(task.id, adminActor);
       assert.equal(result.status, "UNSUPPORTED_TOOL");
@@ -229,6 +295,219 @@ async function main() {
       const n8nClientSource = fs.readFileSync(path.join(__dirname, "..", "n8nClient.ts"), "utf-8");
       assert.ok(!n8nClientSource.includes("console.log"), "n8nClient.ts must not console.log request payloads/secrets");
     });
+
+    // ================================================================
+    // Social media execution v0.1 — Blotato adapter (dry-run only)
+    // ================================================================
+
+    await test("blotato: valid resolution builds the exact outbound request, no HTTP call made", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId);
+      const result = await dryRunPublish(fixture.post.id, agencyId);
+      assert.equal(result.ok, true);
+      if (result.ok && result.dryRun) {
+        assert.equal(result.request.post.accountId, "test-account-ref");
+        assert.equal(result.request.post.content.text, "Test caption for dry-run.");
+        assert.deepEqual(result.request.post.content.mediaUrls, ["https://example.invalid/test-media.mp4"]);
+        assert.equal(result.request.post.content.platform, "INSTAGRAM");
+      }
+    });
+
+    await test("blotato: nonexistent post returns POST_NOT_FOUND", async () => {
+      const result = await validateAndBuildRequest("does-not-exist", agencyId);
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.reason, "POST_NOT_FOUND");
+    });
+
+    await test("blotato: cross-agency post is indistinguishable from not-found (no existence leak)", async () => {
+      const fixture = await makeBlotatoPostFixture(otherAgency.id);
+      const result = await validateAndBuildRequest(fixture.post.id, agencyId);
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.reason, "POST_NOT_FOUND");
+    });
+
+    await test("blotato: unsupported social account source (NATIVE) is rejected", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId, { source: "NATIVE", hasBlotatoAccount: false });
+      const result = await validateAndBuildRequest(fixture.post.id, agencyId);
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.reason, "UNSUPPORTED_SOURCE");
+    });
+
+    await test("blotato: inactive social account is rejected", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId, { isActive: false });
+      const result = await validateAndBuildRequest(fixture.post.id, agencyId);
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.reason, "ACCOUNT_INACTIVE");
+    });
+
+    await test("blotato: missing Blotato credential is rejected", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId, { hasBlotatoAccount: false });
+      const result = await validateAndBuildRequest(fixture.post.id, agencyId);
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.reason, "MISSING_CREDENTIAL");
+    });
+
+    await test("blotato: missing caption is rejected (MISSING_CONTENT)", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId, { caption: null });
+      const result = await validateAndBuildRequest(fixture.post.id, agencyId);
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.reason, "MISSING_CONTENT");
+    });
+
+    await test("blotato: missing media URL is rejected (MISSING_MEDIA)", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId, { driveUrl: null });
+      const result = await validateAndBuildRequest(fixture.post.id, agencyId);
+      assert.equal(result.ok, false);
+      if (!result.ok) assert.equal(result.reason, "MISSING_MEDIA");
+    });
+
+    await test("blotato: dry-run result never contains the API key in any form", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId);
+      const result = await dryRunPublish(fixture.post.id, agencyId);
+      const serialized = JSON.stringify(result);
+      assert.ok(!serialized.includes("test-fake-blotato-key"), "dry-run result must never include the plaintext API key");
+      assert.ok(!/blotato-api-key/i.test(serialized), "dry-run result must never include the auth header name/value");
+    });
+
+    await test("blotato (mocked): publishReal() success path returns a sanitized postSubmissionId, never the request/credential", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId);
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () => new Response(JSON.stringify({ postSubmissionId: "sub_test_123" }), { status: 200 })) as typeof fetch;
+      try {
+        const result = await publishReal(fixture.post.id, agencyId);
+        assert.equal(result.ok, true);
+        if (result.ok && !result.dryRun) {
+          assert.equal(result.postSubmissionId, "sub_test_123");
+        }
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    await test("blotato (mocked): publishReal() sanitizes a real API error, never surfaces the raw response body", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId);
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () => new Response("internal blotato secret detail leaked in body", { status: 500 })) as typeof fetch;
+      try {
+        const result = await publishReal(fixture.post.id, agencyId);
+        assert.equal(result.ok, false);
+        if (!result.ok) {
+          assert.equal(result.reason, "EXECUTION_ERROR");
+          assert.ok(!result.message.includes("internal blotato secret detail"), "the raw external error body must never be surfaced");
+        }
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    await test("blotato (mocked): publishReal() times out safely rather than hanging", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId);
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (() => new Promise(() => {})) as typeof fetch; // never resolves
+      try {
+        const result = await publishReal(fixture.post.id, agencyId);
+        assert.equal(result.ok, false);
+        if (!result.ok) assert.equal(result.reason, "EXECUTION_ERROR");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    await test("blotato via Execution Engine: full dispatch reaches SUCCEEDED synchronously, Task COMPLETED, correct Events, no HTTP call", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId);
+      const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
+      cleanupTaskIds.push(task.id);
+
+      const originalFetch = globalThis.fetch;
+      let fetchCalled = false;
+      globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+        fetchCalled = true;
+        return originalFetch(...args);
+      }) as typeof fetch;
+
+      try {
+        const result = await createExecutionForTask(task.id, adminActor, { postId: fixture.post.id });
+        assert.equal(result.status, "CREATED");
+        if (result.status === "CREATED") {
+          assert.equal(result.execution.status, "SUCCEEDED");
+          assert.equal(result.execution.toolKey, "blackos_api");
+        }
+        assert.equal(fetchCalled, false, "the dry-run dispatch path must never make an HTTP request");
+
+        const finalTask = await prisma.task.findUnique({ where: { id: task.id } });
+        assert.equal(finalTask?.status, "COMPLETED");
+
+        const events = await prisma.event.findMany({ where: { agencyId, createdAt: { gte: testStartedAt } } });
+        const types = events.filter((e) => (e.metadata as { taskId?: string } | null)?.taskId === task.id).map((e) => e.type);
+        assert.ok(types.includes("WORKFLOW_STARTED"));
+        assert.ok(types.includes("WORKFLOW_COMPLETED"));
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    await test("blotato via Execution Engine: missing postId fails the dispatch (Task/Execution FAILED, not silently skipped)", async () => {
+      const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
+      cleanupTaskIds.push(task.id);
+      const result = await createExecutionForTask(task.id, adminActor);
+      assert.equal(result.status, "CREATED");
+      if (result.status === "CREATED") {
+        assert.equal(result.execution.status, "FAILED");
+      }
+      const finalTask = await prisma.task.findUnique({ where: { id: task.id } });
+      assert.equal(finalTask?.status, "FAILED");
+    });
+
+    await test("blotato via Execution Engine: cross-agency postId fails closed (Execution FAILED with a generic reason, no leak)", async () => {
+      const fixture = await makeBlotatoPostFixture(otherAgency.id);
+      const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
+      cleanupTaskIds.push(task.id);
+      const result = await createExecutionForTask(task.id, adminActor, { postId: fixture.post.id });
+      assert.equal(result.status, "CREATED");
+      if (result.status === "CREATED") {
+        assert.equal(result.execution.status, "FAILED");
+        assert.ok(!result.execution.failureReason?.toLowerCase().includes(otherAgency.id.toLowerCase()));
+      }
+    });
+
+    await test("blotato via Execution Engine: repeated dispatch does not create a duplicate Execution (existing idempotency reused, not reinvented)", async () => {
+      const fixture = await makeBlotatoPostFixture(agencyId);
+      const task = await makeTask(agencyId, { capabilityKey: "social_media_management", riskLevel: "MEDIUM" });
+      cleanupTaskIds.push(task.id);
+      const first = await createExecutionForTask(task.id, adminActor, { postId: fixture.post.id });
+      // Task is now IN_PROGRESS/COMPLETED, not READY — a second call correctly
+      // hits the same INVALID_STATE guard proven for n8n's own concurrency
+      // test; the point here is specifically that no second Execution row
+      // for this Task is ever created, regardless of which guard catches it.
+      const second = await createExecutionForTask(task.id, adminActor, { postId: fixture.post.id });
+      void first;
+      void second;
+      const count = await prisma.execution.count({ where: { taskId: task.id } });
+      assert.equal(count, 1);
+    });
+
+    await test("static guard: no Agent module imports the Blotato adapter or client, or accesses credentials", async () => {
+      const agentSource = fs.readFileSync(path.join(__dirname, "..", "..", "agents", "agentService.ts"), "utf-8");
+      assert.ok(!/blotatoAdapter|BlotatoClient|blotato\/client/i.test(agentSource), "agentService.ts must not import the Blotato adapter or client");
+      assert.ok(!agentSource.includes("decryptSecret"), "agentService.ts must never touch credential decryption");
+    });
+
+    await test("static guard: blotatoAdapter.ts is the only execution-path module importing BlotatoClient", async () => {
+      const adapterSource = fs.readFileSync(path.join(__dirname, "..", "blotatoAdapter.ts"), "utf-8");
+      assert.ok(adapterSource.includes("BlotatoClient"), "sanity check: the adapter itself does import it");
+      const executionServiceSource = fs.readFileSync(path.join(__dirname, "..", "executionService.ts"), "utf-8");
+      assert.ok(!executionServiceSource.includes("BlotatoClient"), "executionService.ts must go through blotatoAdapter.ts, never call BlotatoClient directly");
+      assert.ok(!executionServiceSource.includes("decryptSecret"), "executionService.ts must never touch credential decryption directly");
+    });
+
+    await test("static guard: blotatoAdapter.ts never logs the API key and never accepts an arbitrary URL/method", async () => {
+      const source = fs.readFileSync(path.join(__dirname, "..", "blotatoAdapter.ts"), "utf-8");
+      assert.ok(!/console\.(log|error|warn)\([^)]*apiKey/i.test(source), "must never log the API key");
+      assert.ok(!source.includes("child_process"), "must never shell out");
+      // No parameter anywhere in this module accepts a URL or HTTP method —
+      // confirmed structurally: BASE_URL/method are only ever set inside
+      // BlotatoClient itself, never threaded through from this module's inputs.
+      assert.ok(!/url\s*:\s*string/i.test(source) && !/method\s*:\s*string/i.test(source), "must not accept a caller-supplied URL or HTTP method");
+    });
   } finally {
     if (cleanupTaskIds.length > 0) {
       await prisma.executionStep.deleteMany({ where: { execution: { taskId: { in: cleanupTaskIds } } } });
@@ -237,8 +516,26 @@ async function main() {
       await prisma.event.deleteMany({ where: { createdAt: { gte: testStartedAt } } });
       await prisma.task.deleteMany({ where: { id: { in: cleanupTaskIds } } });
     }
+    if (cleanupModelIds.length > 0) {
+      // Post.socialAccountId has no onDelete: Cascade, so Post rows must be
+      // deleted explicitly before Model (whose cascade would otherwise try
+      // to remove SocialAccount rows Post still references). Video and
+      // SocialAccount themselves do cascade from Model deletion.
+      await prisma.post.deleteMany({ where: { video: { modelId: { in: cleanupModelIds } } } });
+      await prisma.model.deleteMany({ where: { id: { in: cleanupModelIds } } });
+    }
+    if (cleanupBlotatoAccountIds.length > 0) {
+      await prisma.blotatoAccount.deleteMany({ where: { id: { in: cleanupBlotatoAccountIds } } });
+    }
     await prisma.agency.delete({ where: { id: otherAgency.id } }).catch(() => {});
   }
+
+  await test("Task/Execution/ExecutionStep/Approval/Event/Model/Post/BlotatoAccount tables return to baseline after cleanup", async () => {
+    const [modelsAfter, postsAfter, blotatoAccountsAfter] = await Promise.all([prisma.model.count(), prisma.post.count(), prisma.blotatoAccount.count()]);
+    assert.equal(modelsAfter, modelsBefore);
+    assert.equal(postsAfter, postsBefore);
+    assert.equal(blotatoAccountsAfter, blotatoAccountsBefore);
+  });
 
   await test("Task/Execution/ExecutionStep/Approval/Event tables return to baseline after cleanup", async () => {
     const [tasksAfter, executionsAfter, stepsAfter, approvalsAfter, eventsAfter] = await Promise.all([

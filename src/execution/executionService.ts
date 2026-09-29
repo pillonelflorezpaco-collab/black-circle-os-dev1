@@ -7,12 +7,17 @@ import { eventRepository } from "@/repositories/event.repository";
 import { assertCan, assertSameAgency, ForbiddenError } from "@/lib/permissions";
 import { resolveCapabilityContext } from "@/jarvis/graphResolver";
 import { triggerTestWorkflow } from "./n8nClient";
+import { dryRunPublish } from "./blotatoAdapter";
 import type { IntentKey } from "@/jarvis/types";
 
-// V0.1 test adapter supports exactly one tool. Anything else (e.g.
-// "blackos_api") is correctly reported as unsupported rather than silently
+// v0.1a supported exactly one tool ("n8n", the zero-side-effect test
+// adapter). v0.1's social-media-execution phase adds "blackos_api" —
+// resolved DRY_RUN ONLY via blotatoAdapter.dryRunPublish(); real publishing
+// is implemented in that module but not wired in here — see
+// docs/social-media-execution.md "Real publish boundary". Any other tool
+// key is still correctly reported as unsupported rather than silently
 // attempted — see docs/execution-engine.md §6.
-const SUPPORTED_TOOL_KEYS = new Set(["n8n"]);
+const SUPPORTED_TOOL_KEYS = new Set(["n8n", "blackos_api"]);
 const TEST_WORKFLOW_REF = "blackos-execution-test";
 
 interface Actor {
@@ -36,7 +41,7 @@ export type CreateExecutionResult =
  * re-derived from the Task row and the Neo4j graph. See
  * docs/execution-engine.md §5.
  */
-export async function createExecutionForTask(taskId: string, actor: Actor): Promise<CreateExecutionResult> {
+export async function createExecutionForTask(taskId: string, actor: Actor, opts?: { postId?: string }): Promise<CreateExecutionResult> {
   const task = await taskRepository.findById(taskId);
   if (!task) return { status: "NOT_FOUND" };
 
@@ -106,7 +111,7 @@ export async function createExecutionForTask(taskId: string, actor: Actor): Prom
   await executionStepRepository.create({
     execution: { connect: { id: execution.id } },
     sequence: 1,
-    kind: "N8N_WORKFLOW",
+    kind: toolKey === "blackos_api" ? "BLOTATO_DRY_RUN" : "N8N_WORKFLOW",
     status: "PENDING",
     input: { executionId: execution.id, taskId: task.id, idempotencyKey, agencyId: task.agencyId, capabilityKey: task.capabilityKey },
   });
@@ -121,6 +126,10 @@ export async function createExecutionForTask(taskId: string, actor: Actor): Prom
     metadata: { taskId: task.id, executionId: execution.id, toolKey },
     agency: { connect: { id: task.agencyId } },
   });
+
+  if (toolKey === "blackos_api") {
+    return dispatchBlotatoDryRun(execution, task, opts?.postId);
+  }
 
   const trigger = await triggerTestWorkflow({
     executionId: execution.id,
@@ -148,6 +157,69 @@ export async function createExecutionForTask(taskId: string, actor: Actor): Prom
 
   const awaiting = await executionRepository.update(execution.id, { status: "AWAITING_CALLBACK" });
   return { status: "CREATED", execution: awaiting };
+}
+
+/**
+ * Dry-run only (see blotatoAdapter.ts's module doc for why). Unlike the n8n
+ * path, this is synchronous and never leaves AWAITING_CALLBACK — there is no
+ * callback for a dry run, so the Execution reaches a terminal state
+ * (SUCCEEDED/FAILED) immediately, in this same call.
+ */
+async function dispatchBlotatoDryRun(execution: Execution, task: { id: string; title: string; agencyId: string }, postId: string | undefined): Promise<CreateExecutionResult> {
+  if (!postId) {
+    const failed = await executionRepository.update(execution.id, {
+      status: "FAILED",
+      finishedAt: new Date(),
+      failureReason: "postId is required to execute a social_media_management task.",
+    });
+    await taskRepository.update(task.id, { status: "FAILED" });
+    await eventRepository.create({
+      type: "WORKFLOW_FAILED",
+      message: `Execution failed to dispatch for task: ${task.title}`,
+      metadata: { taskId: task.id, executionId: execution.id, toolKey: "blackos_api" },
+      agency: { connect: { id: task.agencyId } },
+    });
+    return { status: "CREATED", execution: failed };
+  }
+
+  const result = await dryRunPublish(postId, task.agencyId);
+
+  if (!result.ok) {
+    const failed = await executionRepository.update(execution.id, {
+      status: "FAILED",
+      finishedAt: new Date(),
+      failureReason: result.message,
+    });
+    await taskRepository.update(task.id, { status: "FAILED" });
+    await eventRepository.create({
+      type: "WORKFLOW_FAILED",
+      message: `Execution failed to dispatch for task: ${task.title}`,
+      metadata: { taskId: task.id, executionId: execution.id, toolKey: "blackos_api" },
+      agency: { connect: { id: task.agencyId } },
+    });
+    return { status: "CREATED", execution: failed };
+  }
+
+  // dryRunPublish() only ever resolves to the dryRun: true variant on
+  // success — narrowed explicitly rather than asserted, so a future change
+  // to blotatoAdapter.ts can't silently make this unsafe.
+  // Plain-serialized so Prisma's Json input accepts it (BlotatoCreatePostRequest
+  // is a typed interface, not an index-signature object) — a structural copy,
+  // not a redaction: the request never contains the API key in the first place.
+  const requestForAudit = JSON.parse(JSON.stringify(result.dryRun ? result.request : null)) as Prisma.InputJsonValue;
+  const succeeded = await executionRepository.update(execution.id, {
+    status: "SUCCEEDED",
+    finishedAt: new Date(),
+    result: { success: true, dryRun: true, summary: "Dry-run validation succeeded; no content was published.", request: requestForAudit },
+  });
+  await taskRepository.update(task.id, { status: "COMPLETED" });
+  await eventRepository.create({
+    type: "WORKFLOW_COMPLETED",
+    message: `Execution succeeded (dry run) for task: ${task.title}`,
+    metadata: { taskId: task.id, executionId: execution.id, toolKey: "blackos_api" },
+    agency: { connect: { id: task.agencyId } },
+  });
+  return { status: "CREATED", execution: succeeded };
 }
 
 export interface N8nCallbackPayload {
