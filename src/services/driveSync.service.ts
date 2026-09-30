@@ -1,21 +1,31 @@
 import { prisma } from "@/lib/prisma";
-import { listDriveFolderChildren } from "@/lib/googleDrive";
+import { listDriveFolderChildren, moveDriveFile } from "@/lib/googleDrive";
 import { activityRepository } from "@/repositories/activity.repository";
 import { sendTelegramMessage } from "@/lib/telegram";
 
 /**
  * Daily Drive → BlackOS sync: detects new files the models have uploaded
- * into their public "Model OF" Drive folder and imports each one as a Video
+ * into their public "Model OF" Drive folder, physically moves each one into
+ * the matching platform folder of the internal mirror (the service account
+ * has Editor access on both, granted 2026-09-30), and imports it as a Video
  * row (stage A_EDITER) so it shows up on the Espace Éditrice page and
  * notifies the assigned editor.
  *
- * Read-only for now — the Drive service account only has the
- * drive.readonly scope, so this does NOT physically move/copy files into
- * the internal Drive folder yet. That needs the service account re-granted
- * with write access before it can be added; until then, BlackOS is the
- * source of truth for "what's new to edit", and the model's own Drive
- * folder stays the actual file location.
+ * The public folder's subfolders are named "1 — ONLYFANS"/"2 — NORMAL"/
+ * "3 — REELS"; the internal mirror's are named per platform too (e.g.
+ * "ONLYFANS — POSTEADO"), not identically — matched by the platform keyword
+ * they share (see matchInternalFolder). If a model's internal mirror has no
+ * folder for a given platform, the file is still imported as a Video (so
+ * it's not lost from tracking) but left in place in Drive; this is logged
+ * so the gap in that model's folder structure can be fixed by hand.
  */
+
+const PLATFORM_KEYWORDS = ["ONLYFANS", "NORMAL", "REELS"];
+
+function platformKeywordIn(name: string): string | null {
+  const upper = name.toUpperCase();
+  return PLATFORM_KEYWORDS.find((kw) => upper.includes(kw)) ?? null;
+}
 
 function currentWeekLabel(): string {
   const now = new Date();
@@ -46,13 +56,14 @@ async function findOrCreateBatch(modelId: string, agencyId: string, editorId: st
   return prisma.editingBatch.create({ data: { modelId, agencyId, assignedEditorId: editorId, weekLabel, status: "A_EDITER" } });
 }
 
-export async function syncDriveContentForAllModels(): Promise<{ modelsScanned: number; videosCreated: number }> {
+export async function syncDriveContentForAllModels(): Promise<{ modelsScanned: number; videosCreated: number; filesMoved: number }> {
   const models = await prisma.model.findMany({
     where: { driveFolderId: { not: null } },
-    select: { id: true, name: true, agencyId: true, driveFolderId: true },
+    select: { id: true, name: true, agencyId: true, driveFolderId: true, driveInternalFolderId: true },
   });
 
   let videosCreated = 0;
+  let filesMoved = 0;
   const weekLabel = currentWeekLabel();
 
   for (const model of models) {
@@ -62,6 +73,15 @@ export async function syncDriveContentForAllModels(): Promise<{ modelsScanned: n
     } catch (err) {
       console.error(`[driveSync] failed to list root folder for ${model.name}:`, err);
       continue;
+    }
+
+    let internalSubfolders: Awaited<ReturnType<typeof listDriveFolderChildren>> = [];
+    if (model.driveInternalFolderId) {
+      try {
+        internalSubfolders = await listDriveFolderChildren(model.driveInternalFolderId);
+      } catch (err) {
+        console.error(`[driveSync] failed to list internal folder for ${model.name}:`, err);
+      }
     }
 
     let newForModel = 0;
@@ -74,9 +94,23 @@ export async function syncDriveContentForAllModels(): Promise<{ modelsScanned: n
         continue;
       }
 
+      const keyword = platformKeywordIn(sub.name);
+      const internalTarget = keyword ? internalSubfolders.find((f) => f.isFolder && platformKeywordIn(f.name) === keyword) : undefined;
+
       for (const file of files.filter((f) => !f.isFolder)) {
         const existing = await prisma.video.findFirst({ where: { driveFileId: file.id } });
         if (existing) continue;
+
+        if (internalTarget) {
+          try {
+            await moveDriveFile(file.id, sub.id, internalTarget.id);
+            filesMoved++;
+          } catch (err) {
+            console.error(`[driveSync] failed to move "${file.name}" for ${model.name}:`, err);
+          }
+        } else {
+          console.warn(`[driveSync] no internal "${keyword ?? sub.name}" folder found for ${model.name} — file left in place`);
+        }
 
         const assignedEditorId = await findAssignedEditorId(model.id);
         const batch = await findOrCreateBatch(model.id, model.agencyId, assignedEditorId, weekLabel);
@@ -111,7 +145,7 @@ export async function syncDriveContentForAllModels(): Promise<{ modelsScanned: n
     }
   }
 
-  return { modelsScanned: models.length, videosCreated };
+  return { modelsScanned: models.length, videosCreated, filesMoved };
 }
 
 async function notifyEditorNewFiles(modelId: string, modelName: string, count: number, weekLabel: string) {

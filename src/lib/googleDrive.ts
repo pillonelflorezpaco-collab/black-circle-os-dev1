@@ -2,10 +2,11 @@ import { google } from "googleapis";
 
 /**
  * Server-only Google Drive client, authenticated as the "blackos-drive-reader"
- * service account (read-only role on Drive, shared explicitly on the OFM/
- * Interno folders — never on the user's whole Drive). The private key lives
- * only in the GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY env var (never committed, never
- * logged) — this file is the only place that reads it.
+ * service account — shared explicitly on the OFM/Interno folders as an
+ * Editor (never on the user's whole Drive), which is what lets
+ * moveDriveFile() below actually relocate files rather than just list them.
+ * The private key lives only in the GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY env var
+ * (never committed, never logged) — this file is the only place that reads it.
  */
 
 let cachedDrive: ReturnType<typeof google.drive> | null = null;
@@ -21,7 +22,7 @@ function getDriveClient() {
 
   const auth = new google.auth.GoogleAuth({
     credentials,
-    scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+    scopes: ["https://www.googleapis.com/auth/drive"],
   });
 
   cachedDrive = google.drive({ version: "v3", auth });
@@ -62,4 +63,26 @@ export async function listDriveFolderChildren(folderId: string): Promise<DriveEn
     webViewLink: f.webViewLink ?? null,
     thumbnailLink: f.thumbnailLink ?? null,
   }));
+}
+
+/** Finds a direct child folder of `parentId` by exact name, or null if there isn't one. */
+export async function findChildFolderByName(parentId: string, name: string): Promise<string | null> {
+  const drive = getDriveClient();
+  const res = await drive.files.list({
+    q: `'${parentId}' in parents and trashed = false and mimeType = '${FOLDER_MIME}' and name = '${name.replace(/'/g, "\\'")}'`,
+    fields: "files(id)",
+    pageSize: 1,
+  });
+  return res.data.files?.[0]?.id ?? null;
+}
+
+/** Moves a file from one Drive folder to another (removes the old parent, adds the new one) — a real relocation, not a copy. Requires the service account to have Editor access on both folders. */
+export async function moveDriveFile(fileId: string, fromParentId: string, toParentId: string): Promise<void> {
+  const drive = getDriveClient();
+  await drive.files.update({
+    fileId,
+    addParents: toParentId,
+    removeParents: fromParentId,
+    fields: "id, parents",
+  });
 }
