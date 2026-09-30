@@ -124,7 +124,6 @@ export async function getModelDetail(modelId: string, agencyId?: string | null) 
       loginIdentifier: sa.loginIdentifier,
       hasPassword: !!sa.loginPasswordEnc,
     })),
-    links: model.links,
     assignments: model.assignments,
     assignableUsers,
     activity,
@@ -134,16 +133,6 @@ export async function getModelDetail(modelId: string, agencyId?: string | null) 
 export function updateModelNotes(modelId: string, notes: string, actorRole: Role) {
   assertCan(actorRole, "gererModels");
   return modelRepository.updateNotes(modelId, notes);
-}
-
-export function addModelLink(modelId: string, label: string, url: string, actorRole: Role) {
-  assertCan(actorRole, "gererModels");
-  return modelRepository.addLink(modelId, label, url);
-}
-
-export function removeModelLink(linkId: string, actorRole: Role) {
-  assertCan(actorRole, "gererModels");
-  return modelRepository.removeLink(linkId);
 }
 
 export function assignModelUser(modelId: string, userId: string, actorRole: Role) {

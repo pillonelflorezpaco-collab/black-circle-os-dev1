@@ -18,7 +18,6 @@ export const modelRepository = {
         socialAccounts: true,
         videos: true,
         blotatoAccount: true,
-        links: { orderBy: { createdAt: "asc" } },
         assignments: { include: { user: true }, orderBy: { createdAt: "asc" } },
         platformConnections: true,
       },
@@ -39,18 +38,6 @@ export const modelRepository = {
 
   updateNotes(id: string, notes: string) {
     return prisma.model.update({ where: { id }, data: { notes } });
-  },
-
-  addLink(modelId: string, label: string, url: string) {
-    return prisma.modelLink.create({ data: { modelId, label, url } });
-  },
-
-  findLinkById(id: string) {
-    return prisma.modelLink.findUnique({ where: { id }, include: { model: true } });
-  },
-
-  removeLink(id: string) {
-    return prisma.modelLink.delete({ where: { id } });
   },
 
   addAssignment(modelId: string, userId: string) {

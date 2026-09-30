@@ -8,7 +8,6 @@ import { can } from "@/lib/permissions";
 import { getEffectiveAgencyId } from "@/lib/agencyContext";
 import AccessCodeControl from "../AccessCodeControl";
 import ModelNotesForm from "./ModelNotesForm";
-import ModelLinksSection from "./ModelLinksSection";
 import ModelAssignmentsSection from "./ModelAssignmentsSection";
 import ModelAccountAccessSection from "./ModelAccountAccessSection";
 
@@ -187,7 +186,7 @@ export default async function ModelDetailPage({ params }: { params: Promise<{ id
                 className="bc-plat-chip"
                 style={{ textDecoration: "none" }}
               >
-                📁 Dossier modèle (upload brut)
+                📁 Dossier modèle (accès modèle uniquement)
               </a>
             )}
             {model.driveInternalFolderId && (
@@ -198,7 +197,7 @@ export default async function ModelDetailPage({ params }: { params: Promise<{ id
                 className="bc-plat-chip"
                 style={{ textDecoration: "none" }}
               >
-                📁 Dossier interne (tri / édition)
+                📁 Dossier interne (accès équipe)
               </a>
             )}
           </div>
@@ -212,15 +211,6 @@ export default async function ModelDetailPage({ params }: { params: Promise<{ id
       </div>
       <div className="bc-card" style={{ marginBottom: 24 }}>
         <ModelAssignmentsSection modelId={model.id} assignments={model.assignments} assignableUsers={model.assignableUsers} canEdit={canEdit} />
-      </div>
-
-      <div className="bc-section-title">
-        <div className="st-left">
-          <span className="eyebrow">Notion-style</span>Liens
-        </div>
-      </div>
-      <div className="bc-card" style={{ marginBottom: 24 }}>
-        <ModelLinksSection modelId={model.id} links={model.links} canEdit={canEdit} />
       </div>
 
       <div className="bc-section-title">
