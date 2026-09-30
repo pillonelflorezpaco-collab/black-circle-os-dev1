@@ -64,6 +64,16 @@ enum ModelStatus {
   CRIT
 }
 
+// Mirrors the "🟢 Activo / 🟡 En proceso / 🔴 Pausado" tri-state used
+// throughout the real ClickUp "informacion personal (@{Nombre})" doc per
+// model — the source of truth this phase imports from. Distinct from
+// ModelStatus (content-pipeline health, unrelated concept).
+enum ModelLifecycleStatus {
+  ACTIVE
+  IN_PROGRESS
+  PAUSED
+}
+
 enum IntegrationType {
   GOOGLE_DRIVE
   GOOGLE_CALENDAR
@@ -377,6 +387,49 @@ model Model {
   // separate step from creating the Model, and older/test Models have none.
   driveFolderId         String?
   driveInternalFolderId String?
+
+  // Real fields from the agency's existing ClickUp "informacion personal
+  // (@{Nombre})" doc per model — replicating an already-in-use client
+  // record, not inventing a new one. Every field is nullable: most are
+  // still blank even in the real ClickUp docs today (confirmed by
+  // inspection across all 9 models), so an empty field here is an honest
+  // reflection of missing data, not a bug.
+  legalName             String? // "Nombre completo"
+  birthDate             DateTime? // "Fecha de nacimiento"
+  stageName             String? // "Nombre artístico"
+  personalEmail         String? // "Email"
+  personalPhone         String? // "Teléfono"
+  country               String? // "País"
+  onboardingStartDate   DateTime? // "Fecha de inicio"
+  relationshipStatus    ModelLifecycleStatus? // section 1 "Estado"
+  managerName           String? // "Responsable / Manager asignado"
+  importantNotes        String?               @db.Text // "Notas importantes"
+
+  telegramHandle    String? // "Telegram del cliente"
+  workGroupRef      String? // "Grupo de trabajo"
+  vipChannelRef     String? // "Canal VIP"
+  whatsapp          String? // "WhatsApp"
+  directEmail       String? // "Email directo" — a separate field from personalEmail in the source doc
+
+  contractUrl        String? // "Contrato" (Drive link, section 5)
+  legalDocumentsUrl  String? // "Documentos legales" (Drive link, section 5)
+
+  agencyCommissionPercent Float? // "Comisión de la agencia (%)"
+  modelPercent            Float? // "Porcentaje del modelo (%)"
+  paymentMethod           String? // "Método de pago"
+  pendingAmount           Float? // "Dinero pendiente"
+  paidAmountHistoric      Float? // "Dinero pagado (histórico)"
+  contractStatus          ModelLifecycleStatus? // section 7 "Estado del contrato" — tracked separately from relationshipStatus since the source doc treats them as two distinct fields
+
+  onboardingCompleted   Boolean? // "Onboarding" completado/no completado
+  editorAssignedName    String? // "Editor asignado" (free-text name, not yet reconciled to a real User)
+  chatterAssignedName   String? // "Chatter asignado"
+  scripterAssignedName  String? // "Scripter asignado"
+  nextTask              String? // "Próxima tarea"
+  nextImportantDate     DateTime? // "Próxima fecha importante"
+
+  generalNotes String? @db.Text // section 9 "Notas generales"
+
   agencyId         String
   agency           Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   createdAt        DateTime        @default(now())

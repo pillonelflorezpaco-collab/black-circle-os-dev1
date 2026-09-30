@@ -88,6 +88,41 @@ export default async function ModelDetailPage({ params }: { params: Promise<{ id
 
       <div className="bc-section-title">
         <div className="st-left">
+          <span className="eyebrow">Fiche modèle</span>Informations personnelles
+        </div>
+      </div>
+      <div className="bc-card" style={{ marginBottom: 24 }}>
+        {(() => {
+          const p = model.profile;
+          const rows: [string, string | null][] = [
+            ["Nom complet", p.legalName],
+            ["Date de naissance", p.birthDate ? new Date(p.birthDate).toLocaleDateString("fr-FR") : null],
+            ["Nom artistique", p.stageName],
+            ["Email", p.personalEmail],
+            ["Téléphone", p.personalPhone],
+            ["Pays", p.country],
+            ["Manager assigné", p.managerName],
+            ["Éditeur assigné", p.editorAssignedName],
+            ["Chatter assigné", p.chatterAssignedName],
+          ];
+          const filled = rows.filter(([, v]) => v);
+          return filled.length === 0 ? (
+            <p style={{ color: "var(--bc-text-faint)", fontStyle: "italic", fontSize: 13 }}>Aucune information disponible pour ce modèle.</p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
+              {filled.map(([label, value]) => (
+                <div key={label}>
+                  <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--bc-text-faint)", marginBottom: 3 }}>{label}</div>
+                  <div style={{ fontSize: 13 }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </div>
+
+      <div className="bc-section-title">
+        <div className="st-left">
           <span className="eyebrow">Connectés</span>Comptes sociaux
         </div>
       </div>
