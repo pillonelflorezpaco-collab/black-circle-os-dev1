@@ -64,4 +64,25 @@ export const modelRepository = {
   removeAssignment(id: string) {
     return prisma.modelAssignment.delete({ where: { id } });
   },
+
+  addSocialAccountAccess(data: { modelId: string; platform: Prisma.SocialAccountCreateInput["platform"]; displayName: string | null; isMotherAccount: boolean; loginIdentifier: string | null; loginPasswordEnc: string | null }) {
+    return prisma.socialAccount.create({
+      data: {
+        model: { connect: { id: data.modelId } },
+        platform: data.platform,
+        displayName: data.displayName,
+        isMotherAccount: data.isMotherAccount,
+        loginIdentifier: data.loginIdentifier,
+        loginPasswordEnc: data.loginPasswordEnc,
+      },
+    });
+  },
+
+  findSocialAccountById(id: string) {
+    return prisma.socialAccount.findUnique({ where: { id }, include: { model: true } });
+  },
+
+  removeSocialAccount(id: string) {
+    return prisma.socialAccount.delete({ where: { id } });
+  },
 };

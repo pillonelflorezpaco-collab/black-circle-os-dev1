@@ -481,8 +481,14 @@ model ModelAssignment {
 // `source` says which one is authoritative; app-layer invariant (enforced in
 // src/engines/social/services/socialConnection.service.ts, not a DB
 // constraint): exactly one of blotatoAccountId/platformConnectionId is set,
-// matching `source`. The @@unique([modelId, platform]) below is what actually
-// prevents a Model from double-posting to the same platform during migration.
+// matching `source`.
+//
+// A Model can have more than one account per platform (e.g. a "mother"
+// account plus additional accounts opened later for the same platform) —
+// the previous @@unique([modelId, platform]) assumed exactly one, which no
+// longer holds; nothing in the codebase looked up a SocialAccount by that
+// compound key (confirmed by inspection), so relaxing it to a plain index
+// is safe.
 model SocialAccount {
   id                   String              @id @default(cuid())
   modelId              String
@@ -496,6 +502,16 @@ model SocialAccount {
   blotatoAccountRef    String? // Blotato's own per-platform accountId (target.accountId) — only set when source = BLOTATO
   displayName          String?
   isActive             Boolean             @default(true)
+  isMotherAccount      Boolean             @default(false) // the original/primary account for this platform, as distinct from additional accounts opened later
+  // Login access for this specific account — deliberately NOT the same thing
+  // as blotatoAccount.apiKey (that's Blotato's API credential; this is the
+  // actual platform login, e.g. the Instagram username/password). Encrypted
+  // with the same AES-256-GCM helper (src/lib/crypto.ts) already used for
+  // BlotatoAccount.apiKey and PlatformConnection.accessTokenEnc — no new
+  // credential system. Never returned decrypted except via a dedicated,
+  // permission-gated reveal action.
+  loginIdentifier      String? // username or email used to log into this account
+  loginPasswordEnc     String?             @db.Text
   // Optional link to the physical device this account is currently posting
   // from (e.g. an iPhone running Instagram) — null until device infrastructure
   // is actually assigned; posting itself is unaffected by this field today.
@@ -505,7 +521,7 @@ model SocialAccount {
 
   posts Post[]
 
-  @@unique([modelId, platform])
+  @@index([modelId, platform])
   @@index([blotatoAccountId])
   @@index([assignedDeviceId])
 }

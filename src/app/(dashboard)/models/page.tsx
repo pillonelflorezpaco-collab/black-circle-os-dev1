@@ -58,6 +58,11 @@ export default async function ModelsPage() {
             </div>
             <div className="bc-cc-footer">
               <span className={`bc-cc-status ${STATUS_CLASS[m.status]}`}>{STATUS_LABEL[m.status]}</span>
+              {m.missingProfileFieldCount > 0 && (
+                <span className="bc-status-pill pending" style={{ fontSize: 9.5 }}>
+                  {m.missingProfileFieldCount} info{m.missingProfileFieldCount > 1 ? "s" : ""} manquante{m.missingProfileFieldCount > 1 ? "s" : ""}
+                </span>
+              )}
               <span style={{ fontFamily: "var(--font-jbmono)", fontSize: 10, color: "var(--bc-text-faint)" }}>Voir →</span>
             </div>
             {canManage && <AccessCodeControl modelId={m.id} accessCode={m.accessCode} />}

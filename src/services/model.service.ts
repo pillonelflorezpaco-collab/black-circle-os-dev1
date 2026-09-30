@@ -1,9 +1,10 @@
-import type { Role } from "@prisma/client";
+import type { Platform, Role } from "@prisma/client";
 import { modelRepository } from "@/repositories/model.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { activityRepository } from "@/repositories/activity.repository";
 import { assertCan } from "@/lib/permissions";
 import { computeDaysRemaining } from "@/lib/contentStock";
+import { encryptSecret, decryptSecret } from "@/lib/crypto";
 
 function computeInitials(name: string): string {
   return name
@@ -21,10 +22,16 @@ function computeStatus(days: number): "OK" | "WARN" | "CRIT" {
   return days < 3 ? "CRIT" : days < 7 ? "WARN" : "OK";
 }
 
+// Same 6 core profile fields checked on the model detail page's "Fiche
+// modèle" section — kept in one place so the list and detail page can never
+// disagree about what "complete" means.
+const PROFILE_FIELDS_FOR_COMPLETENESS = ["legalName", "birthDate", "stageName", "personalEmail", "personalPhone", "country"] as const;
+
 export async function listModelsForGrid(agencyId?: string | null) {
   const models = await modelRepository.findMany(agencyId);
   return models.map((m) => {
     const days = computeDaysRemaining(m.videos);
+    const missingProfileFieldCount = PROFILE_FIELDS_FOR_COMPLETENESS.filter((field) => !m[field]).length;
     return {
       id: m.id,
       name: m.name,
@@ -35,6 +42,7 @@ export async function listModelsForGrid(agencyId?: string | null) {
       daysRemaining: days,
       status: computeStatus(days),
       accessCode: m.accessCode,
+      missingProfileFieldCount,
     };
   });
 }
@@ -103,7 +111,19 @@ export async function getModelDetail(modelId: string, agencyId?: string | null) 
       generalNotes: model.generalNotes,
     },
     videosByStage,
-    socialAccounts: model.socialAccounts,
+    // Never pass loginPasswordEnc to the page payload, even encrypted — the
+    // ciphertext has no reason to reach the client at all. hasPassword lets
+    // the UI show a "Reveal" control only when one actually exists.
+    socialAccounts: model.socialAccounts.map((sa) => ({
+      id: sa.id,
+      platform: sa.platform,
+      displayName: sa.displayName,
+      source: sa.source,
+      isActive: sa.isActive,
+      isMotherAccount: sa.isMotherAccount,
+      loginIdentifier: sa.loginIdentifier,
+      hasPassword: !!sa.loginPasswordEnc,
+    })),
     links: model.links,
     assignments: model.assignments,
     assignableUsers,
@@ -134,4 +154,43 @@ export function assignModelUser(modelId: string, userId: string, actorRole: Role
 export function unassignModelUser(assignmentId: string, actorRole: Role) {
   assertCan(actorRole, "gererModels");
   return modelRepository.removeAssignment(assignmentId);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Per-account platform login access ("Phase 1" per the agency's own
+// request: store real per-account credentials now, ready for a future
+// daily-form auto-fill; manual entry only in this phase). Reuses the
+// existing AES-256-GCM crypto helper (src/lib/crypto.ts) already used for
+// BlotatoAccount.apiKey — no new credential system. The password is never
+// returned decrypted except via revealSocialAccountPassword(), which is
+// itself permission- and agency-gated.
+// ─────────────────────────────────────────────────────────────
+
+export async function addSocialAccountAccess(
+  modelId: string,
+  input: { platform: Platform; displayName: string | null; isMotherAccount: boolean; loginIdentifier: string | null; loginPassword: string | null },
+  actorRole: Role,
+) {
+  assertCan(actorRole, "gererModels");
+  return modelRepository.addSocialAccountAccess({
+    modelId,
+    platform: input.platform,
+    displayName: input.displayName,
+    isMotherAccount: input.isMotherAccount,
+    loginIdentifier: input.loginIdentifier,
+    loginPasswordEnc: input.loginPassword ? encryptSecret(input.loginPassword) : null,
+  });
+}
+
+export function removeSocialAccountAccess(accountId: string, actorRole: Role) {
+  assertCan(actorRole, "gererModels");
+  return modelRepository.removeSocialAccount(accountId);
+}
+
+/** The only function in the app that ever decrypts an account login password. Agency isolation checked by the caller (same pattern as findLinkById/findAssignmentById). */
+export async function revealSocialAccountPassword(accountId: string, actorRole: Role) {
+  assertCan(actorRole, "gererModels");
+  const account = await modelRepository.findSocialAccountById(accountId);
+  if (!account?.loginPasswordEnc) return null;
+  return decryptSecret(account.loginPasswordEnc);
 }

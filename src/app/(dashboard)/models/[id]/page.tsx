@@ -10,6 +10,7 @@ import AccessCodeControl from "../AccessCodeControl";
 import ModelNotesForm from "./ModelNotesForm";
 import ModelLinksSection from "./ModelLinksSection";
 import ModelAssignmentsSection from "./ModelAssignmentsSection";
+import ModelAccountAccessSection from "./ModelAccountAccessSection";
 
 const STATUS_LABEL: Record<string, string> = { OK: "Sain", WARN: "Attention", CRIT: "Critique" };
 const STATUS_CLASS: Record<string, string> = { OK: "ok", WARN: "warn", CRIT: "crit" };
@@ -106,17 +107,33 @@ export default async function ModelDetailPage({ params }: { params: Promise<{ id
             ["Chatter assigné", p.chatterAssignedName],
           ];
           const filled = rows.filter(([, v]) => v);
-          return filled.length === 0 ? (
-            <p style={{ color: "var(--bc-text-faint)", fontStyle: "italic", fontSize: 13 }}>Aucune information disponible pour ce modèle.</p>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
-              {filled.map(([label, value]) => (
-                <div key={label}>
-                  <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--bc-text-faint)", marginBottom: 3 }}>{label}</div>
-                  <div style={{ fontSize: 13 }}>{value}</div>
+          const missing = rows.filter(([, v]) => !v);
+
+          return (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: missing.length > 0 ? 14 : 0, flexWrap: "wrap" }}>
+                <span className={`bc-status-pill ${missing.length === 0 ? "ok" : "pending"}`}>
+                  {missing.length === 0 ? "Fiche complète" : `${missing.length} info${missing.length > 1 ? "s" : ""} manquante${missing.length > 1 ? "s" : ""}`}
+                </span>
+                {missing.length > 0 && (
+                  <span style={{ fontSize: 11.5, color: "var(--bc-text-faint)" }}>
+                    Manquant : {missing.map(([label]) => label).join(", ")}
+                  </span>
+                )}
+              </div>
+              {filled.length === 0 ? (
+                <p style={{ color: "var(--bc-text-faint)", fontStyle: "italic", fontSize: 13 }}>Aucune information disponible pour ce modèle.</p>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
+                  {filled.map(([label, value]) => (
+                    <div key={label}>
+                      <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--bc-text-faint)", marginBottom: 3 }}>{label}</div>
+                      <div style={{ fontSize: 13 }}>{value}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           );
         })()}
       </div>
@@ -141,6 +158,15 @@ export default async function ModelDetailPage({ params }: { params: Promise<{ id
             ))}
           </div>
         )}
+      </div>
+
+      <div className="bc-section-title">
+        <div className="st-left">
+          <span className="eyebrow">Accès</span>Accès des comptes
+        </div>
+      </div>
+      <div className="bc-card" style={{ marginBottom: 24 }}>
+        <ModelAccountAccessSection modelId={model.id} accounts={model.socialAccounts} canEdit={canEdit} />
       </div>
 
       <div className="bc-section-title">
