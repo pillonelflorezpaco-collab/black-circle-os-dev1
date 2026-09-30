@@ -609,6 +609,7 @@ model Video {
   batchId          String?
   batch            EditingBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
   driveFileId      String? // Drive file id, used to dedupe the daily sync job against files already imported as a Video
+  driveInternalPlatformFolderId String? // the internal-mirror platform folder (e.g. "REELS") this file was synced into — lets a later kanban stage move find the right "1—EN EDICIÓN"/"2—LISTO..." sibling subfolder to relocate it into
   driveUrl         String?
   thumbnailUrl     String?
   caption          String?    @db.Text

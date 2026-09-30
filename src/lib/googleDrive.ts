@@ -65,17 +65,6 @@ export async function listDriveFolderChildren(folderId: string): Promise<DriveEn
   }));
 }
 
-/** Finds a direct child folder of `parentId` by exact name, or null if there isn't one. */
-export async function findChildFolderByName(parentId: string, name: string): Promise<string | null> {
-  const drive = getDriveClient();
-  const res = await drive.files.list({
-    q: `'${parentId}' in parents and trashed = false and mimeType = '${FOLDER_MIME}' and name = '${name.replace(/'/g, "\\'")}'`,
-    fields: "files(id)",
-    pageSize: 1,
-  });
-  return res.data.files?.[0]?.id ?? null;
-}
-
 /** Moves a file from one Drive folder to another (removes the old parent, adds the new one) — a real relocation, not a copy. Requires the service account to have Editor access on both folders. */
 export async function moveDriveFile(fileId: string, fromParentId: string, toParentId: string): Promise<void> {
   const drive = getDriveClient();
@@ -85,4 +74,11 @@ export async function moveDriveFile(fileId: string, fromParentId: string, toPare
     removeParents: fromParentId,
     fields: "id, parents",
   });
+}
+
+/** Current parent folder ids of a file — needed before a move, since Drive requires naming the exact parent being removed rather than "wherever it currently is". */
+export async function getFileParents(fileId: string): Promise<string[]> {
+  const drive = getDriveClient();
+  const res = await drive.files.get({ fileId, fields: "parents" });
+  return res.data.parents ?? [];
 }

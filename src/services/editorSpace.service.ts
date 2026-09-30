@@ -1,7 +1,19 @@
 import { prisma } from "@/lib/prisma";
 import { activityRepository } from "@/repositories/activity.repository";
 import { sendTelegramMessage } from "@/lib/telegram";
+import { listDriveFolderChildren, getFileParents, moveDriveFile } from "@/lib/googleDrive";
 import type { VideoStage } from "@prisma/client";
+
+// The internal-mirror platform folders (e.g. "REELS") use this 3-step
+// structure in Drive itself — matched by keyword since exact spelling drifts
+// ("2 — LISTO PARA PUBLICAR" vs "2 — Listo para publicar"). Not every
+// platform folder has it (e.g. some models' "ONLYFANS" mirror only has a
+// flat "YA SUBIDO OF" folder) — when a stage subfolder isn't found, the file
+// is just left where it is rather than treated as an error.
+const STAGE_SUBFOLDER_KEYWORD: Partial<Record<VideoStage, string>> = {
+  EN_EDITION: "EDICI", // matches "EN EDICIÓN"
+  PRET_POUR_REVIEW: "LISTO", // matches "LISTO PARA PUBLICAR"
+};
 
 const COLUMN_STAGES: VideoStage[] = ["A_EDITER", "EN_EDITION", "PRET_POUR_REVIEW"];
 
@@ -71,6 +83,52 @@ export function isValidBatchStatus(stage: string): stage is VideoStage {
 }
 
 /**
+ * Best-effort: relocates every video in a batch into the Drive stage
+ * subfolder matching `newStatus` (see STAGE_SUBFOLDER_KEYWORD), inside
+ * whichever internal platform folder each video was originally synced into.
+ * A video missing that info (synced before this feature existed, or with no
+ * matching subfolder) is silently left where it is — never blocks the
+ * kanban move itself, which is the DB update in moveBatchStatus.
+ */
+async function relocateBatchFilesInDrive(batchId: string, newStatus: VideoStage): Promise<void> {
+  const keyword = STAGE_SUBFOLDER_KEYWORD[newStatus];
+  if (!keyword) return;
+
+  const videos = await prisma.video.findMany({
+    where: { batchId, driveFileId: { not: null }, driveInternalPlatformFolderId: { not: null } },
+    select: { driveFileId: true, driveInternalPlatformFolderId: true },
+  });
+  if (videos.length === 0) return;
+
+  const targetFolderCache = new Map<string, string | null>();
+
+  for (const video of videos) {
+    const platformFolderId = video.driveInternalPlatformFolderId!;
+    if (!targetFolderCache.has(platformFolderId)) {
+      try {
+        const siblings = await listDriveFolderChildren(platformFolderId);
+        const match = siblings.find((f) => f.isFolder && f.name.toUpperCase().includes(keyword));
+        targetFolderCache.set(platformFolderId, match?.id ?? null);
+      } catch (err) {
+        console.error(`[relocateBatchFilesInDrive] failed to list platform folder ${platformFolderId}:`, err);
+        targetFolderCache.set(platformFolderId, null);
+      }
+    }
+    const targetFolderId = targetFolderCache.get(platformFolderId);
+    if (!targetFolderId) continue;
+
+    try {
+      const parents = await getFileParents(video.driveFileId!);
+      const currentParent = parents[0];
+      if (!currentParent || currentParent === targetFolderId) continue;
+      await moveDriveFile(video.driveFileId!, currentParent, targetFolderId);
+    } catch (err) {
+      console.error(`[relocateBatchFilesInDrive] failed to move file ${video.driveFileId}:`, err);
+    }
+  }
+}
+
+/**
  * Moves an entire batch (and every Video in it) to a new stage in one go —
  * the "à la chaîne" unit is the block, not the individual video. Fires one
  * activity log entry + one Telegram notification for the whole block when it
@@ -79,12 +137,13 @@ export function isValidBatchStatus(stage: string): stage is VideoStage {
 export async function moveBatchStatus(batchId: string, newStatus: VideoStage) {
   const batch = await prisma.editingBatch.findUnique({
     where: { id: batchId },
-    include: { model: { select: { name: true } }, _count: { select: { videos: true } } },
+    include: { model: { select: { name: true, driveInternalFolderId: true } }, _count: { select: { videos: true } } },
   });
   if (!batch) return null;
 
   const updated = await prisma.editingBatch.update({ where: { id: batchId }, data: { status: newStatus } });
   await prisma.video.updateMany({ where: { batchId }, data: { stage: newStatus, stageUpdatedAt: new Date() } });
+  await relocateBatchFilesInDrive(batchId, newStatus);
 
   await activityRepository.log({
     eventType: "VIDEO_STAGE_CHANGED",
@@ -95,7 +154,8 @@ export async function moveBatchStatus(batchId: string, newStatus: VideoStage) {
   });
 
   if (newStatus === "PRET_POUR_REVIEW") {
-    const message = `🎬 <b>Bloc prêt pour review</b> — ${batch.model.name} (${batch.weekLabel}, ${batch._count.videos} vidéos)`;
+    const link = batch.model.driveInternalFolderId ? `\nhttps://drive.google.com/drive/folders/${batch.model.driveInternalFolderId}` : "";
+    const message = `🎬 <b>Bloc prêt pour review</b> — ${batch.model.name} (${batch.weekLabel}, ${batch._count.videos} vidéos)${link}`;
     try {
       await sendTelegramMessage(message);
     } catch (err) {

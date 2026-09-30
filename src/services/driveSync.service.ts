@@ -123,6 +123,7 @@ export async function syncDriveContentForAllModels(): Promise<{ modelsScanned: n
             stage: "A_EDITER",
             weekLabel,
             driveFileId: file.id,
+            driveInternalPlatformFolderId: internalTarget?.id ?? null,
             driveUrl: file.webViewLink,
             thumbnailUrl: file.thumbnailLink,
             ...(assignedEditorId ? { assignedEditor: { connect: { id: assignedEditorId } } } : {}),
