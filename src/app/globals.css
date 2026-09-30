@@ -467,6 +467,8 @@ body.bc-app {
 
 .bc-status-pill { font-family: var(--font-jbmono), monospace; font-size: 10px; letter-spacing: .4px; padding: 3px 9px; border-radius: 20px; background: var(--bc-surface-2); color: var(--bc-text-dim); text-transform: uppercase; }
 .bc-status-pill.pending { background: rgba(232, 179, 104, 0.16); color: var(--bc-amber); }
+.bc-status-pill.ok { background: rgba(127, 174, 134, 0.16); color: var(--bc-green); }
+.bc-status-pill.crit { background: rgba(193, 96, 74, 0.16); color: var(--bc-red); }
 
 .bc-jarvis-panel { position: relative; overflow: hidden; }
 .bc-jarvis-panel.hero { padding: 30px 34px; border-color: var(--bc-amber-dim); background: linear-gradient(180deg, rgba(232,179,104,0.05), transparent 40%), var(--bc-surface); }

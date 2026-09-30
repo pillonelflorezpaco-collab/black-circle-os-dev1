@@ -18,21 +18,22 @@ const NAV_ITEMS = [
   { href: "/rapports", label: "Rapports" },
 ];
 
-// BlackOS / Jarvis layer — Command Center, Tasks, Approvals and Events have
-// real pages. Departments and Agents both live on the same /ecosysteme graph
-// (there's no separate Departments-only or Agents-only view), so V0.2
-// collapses what used to be two nav entries pointing at the same page into
-// one honestly-named "Ecosystem" entry instead of pretending they're
-// distinct destinations. Accounts/Services have no page yet (Task Engine
-// only tracks entityType="MODEL" so far) and are shown disabled rather than
-// as dead links.
+// BlackOS / Jarvis layer — Command Center, Tasks, Approvals, Social Media and
+// Events have real pages. Departments and Agents both live on the same
+// /ecosysteme graph (there's no separate Departments-only or Agents-only
+// view), so V0.2 collapses what used to be two nav entries pointing at the
+// same page into one honestly-named "Ecosystem" entry instead of pretending
+// they're distinct destinations. "Accounts" became /social-media once
+// entityType="POST" Task support (and the Blotato adapter) existed to back
+// it. Services still has no page yet and is shown disabled rather than as a
+// dead link.
 const BLACKOS_NAV_ITEMS: { href: string | null; label: string }[] = [
   { href: "/command-center", label: "Command Center" },
   { href: "/jarvis", label: "Jarvis" },
   { href: "/ecosysteme", label: "Ecosystem" },
   { href: "/tasks", label: "Tasks" },
   { href: "/approvals", label: "Approvals" },
-  { href: null, label: "Accounts" },
+  { href: "/social-media", label: "Social Media" },
   { href: null, label: "Services" },
   { href: "/events", label: "Events" },
 ];
