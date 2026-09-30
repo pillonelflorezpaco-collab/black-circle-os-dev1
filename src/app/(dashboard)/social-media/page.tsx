@@ -1,10 +1,12 @@
 import { auth } from "@/lib/auth";
 import { can } from "@/lib/permissions";
 import { getEffectiveAgencyId } from "@/lib/agencyContext";
-import { getSocialMediaOverview, SOCIAL_MEDIA_STATE_LABEL, type SocialMediaPostState } from "@/services/socialMedia.service";
+import { getSocialMediaOverview, getPostDetail, SOCIAL_MEDIA_STATE_LABEL, type SocialMediaPostState } from "@/services/socialMedia.service";
 import { PLATFORM_COLOR } from "@/services/post.service";
 import { SystemOverview } from "@/components/blackos/CommandCenter/SystemOverview";
 import { SocialMediaPostRow } from "@/components/blackos/SocialMedia/SocialMediaPostRow";
+import { SocialMediaPostDetail } from "@/components/blackos/SocialMedia/SocialMediaPostDetail";
+import { SocialMediaTabs } from "@/components/blackos/SocialMedia/SocialMediaTabs";
 import type { Platform } from "@prisma/client";
 
 const PLATFORMS: Platform[] = ["INSTAGRAM", "YOUTUBE", "FACEBOOK", "PINTEREST", "THREADS", "TWITTER", "LINKEDIN", "TIKTOK", "BLUESKY"];
@@ -13,7 +15,7 @@ const STATES: SocialMediaPostState[] = ["DRAFT", "SCHEDULED", "AWAITING_APPROVAL
 export default async function SocialMediaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ model?: string; platform?: string; state?: string }>;
+  searchParams: Promise<{ model?: string; platform?: string; state?: string; postId?: string }>;
 }) {
   const params = await searchParams;
   const session = await auth();
@@ -23,11 +25,10 @@ export default async function SocialMediaPage({
   const platform = PLATFORMS.includes(params.platform as Platform) ? (params.platform as Platform) : undefined;
   const state = STATES.includes(params.state as SocialMediaPostState) ? (params.state as SocialMediaPostState) : undefined;
 
-  const { summary, models, posts } = await getSocialMediaOverview(agencyId, {
-    modelId: params.model || undefined,
-    platform,
-    state,
-  });
+  const [{ summary, models, posts }, detail] = await Promise.all([
+    getSocialMediaOverview(agencyId, { modelId: params.model || undefined, platform, state }),
+    params.postId ? getPostDetail(params.postId, agencyId) : Promise.resolve(null),
+  ]);
 
   return (
     <>
@@ -40,6 +41,10 @@ export default async function SocialMediaPage({
           Dry-run execution only
         </div>
       </div>
+
+      <SocialMediaTabs active="overview" />
+
+      {detail && <SocialMediaPostDetail detail={detail} canDecide={canDecide} />}
 
       <SystemOverview
         cards={[
@@ -140,6 +145,7 @@ export default async function SocialMediaPage({
                 modelName: post.modelName,
                 platform: post.platform,
                 caption: post.caption,
+                thumbnailUrl: post.thumbnailUrl,
                 scheduledLabel: new Date(post.scheduledTime).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" }),
                 stateLabel: SOCIAL_MEDIA_STATE_LABEL[post.state],
                 state: post.state,

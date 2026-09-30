@@ -19,6 +19,7 @@ export interface SocialMediaPostRowData {
   modelName: string;
   platform: string;
   caption: string | null;
+  thumbnailUrl: string | null;
   scheduledLabel: string;
   stateLabel: string;
   state: SocialMediaPostState;
@@ -44,7 +45,12 @@ export function SocialMediaPostRow({ post, canDecide }: { post: SocialMediaPostR
     <div className="bc-watch-row" style={{ flexDirection: "column", alignItems: "stretch", cursor: "pointer" }} onClick={() => setExpanded((v) => !v)}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, width: "100%" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <div className={`bc-watch-icon ${post.state === "FAILED" ? "dot-crit" : post.state === "AWAITING_APPROVAL" ? "dot-warn" : post.state === "SUCCEEDED" || post.state === "READY" ? "dot-ok" : ""}`}>•</div>
+          {post.thumbnailUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={post.thumbnailUrl} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+          ) : (
+            <div className={`bc-watch-icon ${post.state === "FAILED" ? "dot-crit" : post.state === "AWAITING_APPROVAL" ? "dot-warn" : post.state === "SUCCEEDED" || post.state === "READY" ? "dot-ok" : ""}`}>•</div>
+          )}
           <div style={{ minWidth: 0 }}>
             <div className="bc-watch-name" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {post.modelName} <span style={{ color: "var(--bc-text-faint)", fontWeight: 400 }}>— {post.platform}</span>
@@ -67,6 +73,9 @@ export function SocialMediaPostRow({ post, canDecide }: { post: SocialMediaPostR
             <span>Task: {post.taskId ?? "—"}</span>
             <span>Approval: {post.approvalStatus ?? "—"}</span>
             <span>Execution: {post.executionStatus ?? "—"}</span>
+            <a href={`/social-media?postId=${post.id}`} onClick={(e) => e.stopPropagation()} style={{ color: "var(--bc-amber)" }}>
+              View full detail →
+            </a>
           </div>
 
           {post.state === "AWAITING_APPROVAL" && post.approvalId && (
