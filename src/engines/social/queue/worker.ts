@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { getBoss } from "./boss";
 import { registerHeartbeatJob } from "./jobs/heartbeat.job";
+import { registerDriveSyncJob } from "./jobs/driveSync.job";
 
 /**
  * Entrypoint for the `worker` container (docker-compose.yml). Starts pg-boss
@@ -11,6 +12,7 @@ async function main() {
   const boss = getBoss();
   await boss.start();
   await registerHeartbeatJob(boss);
+  await registerDriveSyncJob(boss);
   console.log("[social-engine:worker] started");
 }
 

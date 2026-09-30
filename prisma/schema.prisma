@@ -602,7 +602,8 @@ model Video {
   modelId          String
   model            Model      @relation(fields: [modelId], references: [id], onDelete: Cascade)
   stage            VideoStage @default(RAW)
-  driveFileId      String?
+  weekLabel        String? // e.g. "Semaine 39 2026" — the editing batch this file was synced into, for per-week tracking on the Espace Éditrice page
+  driveFileId      String? // Drive file id, used to dedupe the daily sync job against files already imported as a Video
   driveUrl         String?
   thumbnailUrl     String?
   caption          String?    @db.Text
@@ -622,6 +623,7 @@ model Video {
   @@index([modelId, stage])
   @@index([assignedEditorId])
   @@index([agencyId])
+  @@index([driveFileId])
 }
 
 // ─────────────────────────────────────────────────────────────

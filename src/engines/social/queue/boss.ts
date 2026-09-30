@@ -23,4 +23,5 @@ export function getBoss(): PgBoss {
 // pg-boss queue names may only contain alphanumerics, underscores, hyphens, periods, or slashes (no colons).
 export const QUEUES = {
   heartbeat: "social-engine.heartbeat",
+  driveSync: "social-engine.drive-sync",
 } as const;

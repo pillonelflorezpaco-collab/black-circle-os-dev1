@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/ecosysteme", label: "Écosystème" },
   { href: "/models", label: "Models" },
   { href: "/pipeline", label: "Content Pipeline" },
+  { href: "/editor-space", label: "Espace Éditrice" },
   { href: "/publications", label: "Publications" },
   { href: "/analytics", label: "Analytics" },
   { href: "/equipe", label: "Équipe" },
