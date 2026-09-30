@@ -13,7 +13,9 @@ import {
   revealSocialAccountPassword,
 } from "@/services/model.service";
 import { modelRepository } from "@/repositories/model.repository";
+import { listFolderForModel } from "@/services/driveContent.service";
 import type { Platform } from "@prisma/client";
+import type { DriveEntry } from "@/lib/googleDrive";
 
 export async function updateModelNotesAction(modelId: string, notes: string): Promise<string | undefined> {
   const session = await auth();
@@ -93,4 +95,12 @@ export async function revealSocialAccountPasswordAction(accountId: string): Prom
   const existing = await modelRepository.findSocialAccountById(accountId);
   assertSameAgency(await getEffectiveAgencyId(), existing?.model.agencyId);
   return revealSocialAccountPassword(accountId, session.user.role);
+}
+
+/** Read-only Drive folder listing for the model's own Drive browser. Agency isolation is enforced inside listFolderForModel(), not just trusted from the client. Returns null for "not found or not in this agency" — same no-leak shape used elsewhere. */
+export async function listModelDriveFolderAction(modelId: string, folderId: string): Promise<DriveEntry[] | null> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Non authentifié.");
+
+  return listFolderForModel(modelId, await getEffectiveAgencyId(), folderId);
 }

@@ -10,6 +10,7 @@ import AccessCodeControl from "../AccessCodeControl";
 import ModelNotesForm from "./ModelNotesForm";
 import ModelAssignmentsSection from "./ModelAssignmentsSection";
 import ModelAccountAccessSection from "./ModelAccountAccessSection";
+import DriveFileBrowser from "./DriveFileBrowser";
 
 const STATUS_LABEL: Record<string, string> = { OK: "Sain", WARN: "Attention", CRIT: "Critique" };
 const STATUS_CLASS: Record<string, string> = { OK: "ok", WARN: "warn", CRIT: "crit" };
@@ -132,6 +133,12 @@ export default async function ModelDetailPage({ params }: { params: Promise<{ id
                   ))}
                 </div>
               )}
+              {p.generalNotes && (
+                <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--bc-border)" }}>
+                  <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--bc-text-faint)", marginBottom: 6 }}>Notes générales</div>
+                  <div style={{ fontSize: 13, whiteSpace: "pre-wrap", color: "var(--bc-text-dim)" }}>{p.generalNotes}</div>
+                </div>
+              )}
             </>
           );
         })()}
@@ -170,38 +177,17 @@ export default async function ModelDetailPage({ params }: { params: Promise<{ id
 
       <div className="bc-section-title">
         <div className="st-left">
-          <span className="eyebrow">Google Drive</span>Dossiers de contenu
+          <span className="eyebrow">Google Drive</span>Contenu
         </div>
       </div>
       <div className="bc-card" style={{ marginBottom: 24 }}>
-        {!model.driveFolderId && !model.driveInternalFolderId ? (
-          <p style={{ color: "var(--bc-text-faint)", fontStyle: "italic", fontSize: 13 }}>Aucun dossier Drive lié.</p>
-        ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            {model.driveFolderId && (
-              <a
-                href={`https://drive.google.com/drive/folders/${model.driveFolderId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bc-plat-chip"
-                style={{ textDecoration: "none" }}
-              >
-                📁 Dossier modèle (accès modèle uniquement)
-              </a>
-            )}
-            {model.driveInternalFolderId && (
-              <a
-                href={`https://drive.google.com/drive/folders/${model.driveInternalFolderId}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bc-plat-chip"
-                style={{ textDecoration: "none" }}
-              >
-                📁 Dossier interne (accès équipe)
-              </a>
-            )}
-          </div>
-        )}
+        <DriveFileBrowser
+          modelId={model.id}
+          roots={[
+            ...(model.driveFolderId ? [{ label: "Dossier modèle (accès modèle uniquement)", folderId: model.driveFolderId }] : []),
+            ...(model.driveInternalFolderId ? [{ label: "Dossier interne (accès équipe)", folderId: model.driveInternalFolderId }] : []),
+          ]}
+        />
       </div>
 
       <div className="bc-section-title">
