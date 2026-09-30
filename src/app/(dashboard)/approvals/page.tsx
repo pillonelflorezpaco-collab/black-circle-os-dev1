@@ -1,8 +1,12 @@
+import { auth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { getEffectiveAgencyId } from "@/lib/agencyContext";
 import { getPendingApprovals } from "@/services/commandCenter.service";
 import { ApprovalPanel } from "@/components/blackos/CommandCenter/ApprovalPanel";
 
 export default async function ApprovalsPage() {
+  const session = await auth();
+  const canDecide = !!session?.user && can(session.user.role, "approuverTaches");
   const agencyId = await getEffectiveAgencyId();
   const approvals = await getPendingApprovals(agencyId, 50);
 
@@ -14,7 +18,7 @@ export default async function ApprovalsPage() {
         </h2>
         <div className="bc-status">
           <span className="dot" />
-          Approval Engine v0.1 — read only
+          {canDecide ? "Approval Engine v0.1" : "Approval Engine v0.1 — read only"}
         </div>
       </div>
 
@@ -24,7 +28,7 @@ export default async function ApprovalsPage() {
         </span>
       </div>
 
-      <ApprovalPanel approvals={approvals} />
+      <ApprovalPanel approvals={approvals} canDecide={canDecide} />
     </>
   );
 }

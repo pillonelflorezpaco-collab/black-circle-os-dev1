@@ -1,3 +1,5 @@
+import { auth } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { getEffectiveAgencyId } from "@/lib/agencyContext";
 import { getCommandCenterCounts, getRecentTasks, getPendingApprovals, getRecentEvents, getAttentionCounts, getRecentOrchestrations } from "@/services/commandCenter.service";
 import { getOrganizationGraph } from "@/services/organization.service";
@@ -12,6 +14,8 @@ import { OrchestrationPanel } from "@/components/blackos/CommandCenter/Orchestra
 import type { OrganizationGraphData } from "@/types/organization";
 
 export default async function CommandCenterPage() {
+  const session = await auth();
+  const canDecide = !!session?.user && can(session.user.role, "approuverTaches");
   const agencyId = await getEffectiveAgencyId();
 
   const [counts, attention, tasks, approvals, events, orchestrations, orgResult] = await Promise.all([
@@ -64,7 +68,7 @@ export default async function CommandCenterPage() {
 
       <div className="bc-grid2b">
         <TaskPanel tasks={tasks} />
-        <ApprovalPanel approvals={approvals} />
+        <ApprovalPanel approvals={approvals} canDecide={canDecide} />
       </div>
 
       <div style={{ marginTop: 22 }}>

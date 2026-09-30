@@ -1,4 +1,5 @@
 import type { Approval, Task } from "@prisma/client";
+import { ApprovalActions } from "./ApprovalActions";
 
 type ApprovalWithTask = Approval & { task: Pick<Task, "id" | "title"> };
 
@@ -12,7 +13,7 @@ function timeAgo(date: Date): string {
   return `il y a ${Math.floor(hours / 24)} j`;
 }
 
-export function ApprovalPanel({ approvals, error }: { approvals: ApprovalWithTask[] | null; error?: string }) {
+export function ApprovalPanel({ approvals, error, canDecide = false }: { approvals: ApprovalWithTask[] | null; error?: string; canDecide?: boolean }) {
   return (
     <div className="bc-card">
       <div className="bc-section-title">
@@ -40,7 +41,7 @@ export function ApprovalPanel({ approvals, error }: { approvals: ApprovalWithTas
               </div>
             </div>
             <div className="bc-watch-right">
-              <span className="bc-status-pill pending">EN ATTENTE</span>
+              {canDecide ? <ApprovalActions approvalId={approval.id} /> : <span className="bc-status-pill pending">EN ATTENTE</span>}
             </div>
           </div>
         ))
