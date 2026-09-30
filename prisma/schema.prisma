@@ -368,6 +368,15 @@ model Model {
   blotatoAccountId String?
   blotatoAccount   BlotatoAccount? @relation(fields: [blotatoAccountId], references: [id])
   accessCode       String?         @unique // model-portal login code (read-only self-service access)
+  // Real Google Drive folder references (id only — never a full path, which
+  // can be renamed without the id changing). driveFolderId is the model's
+  // public intake folder (contains "1 — ONLYFANS"/"2 — NORMAL"/"3 — REELS"
+  // subfolders where raw content is uploaded); driveInternalFolderId is the
+  // internal mirror folder the assistant sorts content into for editing/
+  // posting. Both nullable: linking a Model to its Drive folders is a
+  // separate step from creating the Model, and older/test Models have none.
+  driveFolderId         String?
+  driveInternalFolderId String?
   agencyId         String
   agency           Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   createdAt        DateTime        @default(now())

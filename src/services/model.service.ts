@@ -68,6 +68,8 @@ export async function getModelDetail(modelId: string, agencyId?: string | null) 
     status: computeStatus(days),
     accessCode: model.accessCode,
     agencyId: model.agencyId,
+    driveFolderId: model.driveFolderId,
+    driveInternalFolderId: model.driveInternalFolderId,
     videosByStage,
     socialAccounts: model.socialAccounts,
     links: model.links,

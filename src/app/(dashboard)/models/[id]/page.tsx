@@ -110,6 +110,42 @@ export default async function ModelDetailPage({ params }: { params: Promise<{ id
 
       <div className="bc-section-title">
         <div className="st-left">
+          <span className="eyebrow">Google Drive</span>Dossiers de contenu
+        </div>
+      </div>
+      <div className="bc-card" style={{ marginBottom: 24 }}>
+        {!model.driveFolderId && !model.driveInternalFolderId ? (
+          <p style={{ color: "var(--bc-text-faint)", fontStyle: "italic", fontSize: 13 }}>Aucun dossier Drive lié.</p>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {model.driveFolderId && (
+              <a
+                href={`https://drive.google.com/drive/folders/${model.driveFolderId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bc-plat-chip"
+                style={{ textDecoration: "none" }}
+              >
+                📁 Dossier modèle (upload brut)
+              </a>
+            )}
+            {model.driveInternalFolderId && (
+              <a
+                href={`https://drive.google.com/drive/folders/${model.driveInternalFolderId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bc-plat-chip"
+                style={{ textDecoration: "none" }}
+              >
+                📁 Dossier interne (tri / édition)
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="bc-section-title">
+        <div className="st-left">
           <span className="eyebrow">Équipe</span>Assigné à ce model
         </div>
       </div>

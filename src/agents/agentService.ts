@@ -32,6 +32,11 @@ export function getAgentDefinition(agentKey: string): AgentDefinition | undefine
   return AGENT_REGISTRY[agentKey];
 }
 
+/** Read-only listing of the whole registry — for UI/observability surfaces (e.g. the BlackOS World view) that need to show every code-defined Agent, not just look one up by key. Identity only, same as getAgentDefinition(). */
+export function listAgentDefinitions(): AgentDefinition[] {
+  return Object.values(AGENT_REGISTRY);
+}
+
 /**
  * The sole entry point. Fail-closed order: (1) resolve the Agent definition
  * and confirm it's enabled, (2) confirm the real actor is permitted to

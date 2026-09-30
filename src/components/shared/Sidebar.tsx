@@ -25,10 +25,14 @@ const NAV_ITEMS = [
 // same page into one honestly-named "Ecosystem" entry instead of pretending
 // they're distinct destinations. "Accounts" became /social-media once
 // entityType="POST" Task support (and the Blotato adapter) existed to back
-// it. Services still has no page yet and is shown disabled rather than as a
+// it. "World" is the read-only visual map tying Jarvis/Departments/Agents/
+// Tasks/Approvals/Executions/Tools together (/command-center/world) — it
+// observes the same real data as the other pages, never a second system.
+// Services still has no page yet and is shown disabled rather than as a
 // dead link.
 const BLACKOS_NAV_ITEMS: { href: string | null; label: string }[] = [
   { href: "/command-center", label: "Command Center" },
+  { href: "/command-center/world", label: "World" },
   { href: "/jarvis", label: "Jarvis" },
   { href: "/ecosysteme", label: "Ecosystem" },
   { href: "/tasks", label: "Tasks" },

@@ -161,15 +161,22 @@ export function EcosystemGraph({ graph }: { graph: OrganizationGraphData }) {
           {sectorNodes.map(({ dept, pos, color, icon }) => {
             const isActive = activeDeptKey === dept.key;
             return (
-              <g key={dept.key} className="bc-eco-node-sector" transform={`translate(${pos.x}, ${pos.y})`} onClick={() => setActiveDeptKey(isActive ? null : dept.key)}>
-                {isActive && <circle className="bc-eco-pulse" r={30} fill={color} opacity={0.28} filter="url(#eco-blur-soft)" />}
-                <circle r={22} fill={isActive ? color : "#0b0b0b"} fillOpacity={isActive ? 0.16 : 1} stroke={color} strokeWidth={1.5} />
-                <text textAnchor="middle" dominantBaseline="central" fontSize={14} fill={color}>
-                  {icon}
-                </text>
-                <text className="bc-eco-label" y={40} textAnchor="middle" fontSize={10.5}>
-                  {dept.name}
-                </text>
+              <g key={dept.key} transform={`translate(${pos.x}, ${pos.y})`} onClick={() => setActiveDeptKey(isActive ? null : dept.key)}>
+                {/* Positioning (translate) lives on this outer <g> as an SVG attribute; the
+                    hover-scale CSS transform lives on this inner <g> only. A CSS `transform`
+                    on an SVG element replaces its `transform` attribute entirely rather than
+                    combining with it — putting both on the same <g> made every hover jump the
+                    node to the SVG's origin instead of scaling it in place. */}
+                <g className="bc-eco-node-sector" style={{ transformBox: "fill-box", transformOrigin: "center" }}>
+                  {isActive && <circle className="bc-eco-pulse" r={30} fill={color} opacity={0.28} filter="url(#eco-blur-soft)" />}
+                  <circle r={22} fill={isActive ? color : "#0b0b0b"} fillOpacity={isActive ? 0.16 : 1} stroke={color} strokeWidth={1.5} />
+                  <text textAnchor="middle" dominantBaseline="central" fontSize={14} fill={color}>
+                    {icon}
+                  </text>
+                  <text className="bc-eco-label" y={40} textAnchor="middle" fontSize={10.5}>
+                    {dept.name}
+                  </text>
+                </g>
               </g>
             );
           })}
@@ -189,21 +196,22 @@ export function EcosystemGraph({ graph }: { graph: OrganizationGraphData }) {
               return (
                 <g
                   key={agent.key}
-                  className="bc-eco-node-leaf"
                   transform={`translate(${pos.x}, ${pos.y})`}
                   onClick={(e) => {
                     e.stopPropagation();
                     openAgent(agent);
                   }}
                 >
-                  <circle r={20} fill="var(--bc-amber)" opacity={0.18} filter="url(#eco-blur-tight)" />
-                  <circle r={17} fill="var(--bc-surface-2)" stroke="var(--bc-amber-dim)" strokeWidth={1.2} />
-                  <text textAnchor="middle" dominantBaseline="central" fontSize={9} fill="var(--bc-amber)" fontFamily="var(--font-jbmono)">
-                    {agentGlyph(agent.type)}
-                  </text>
-                  <text className="bc-eco-label" y={32} textAnchor="middle" fontSize={9.5}>
-                    {agent.name}
-                  </text>
+                  <g className="bc-eco-node-leaf" style={{ transformBox: "fill-box", transformOrigin: "center" }}>
+                    <circle r={20} fill="var(--bc-amber)" opacity={0.18} filter="url(#eco-blur-tight)" />
+                    <circle r={17} fill="var(--bc-surface-2)" stroke="var(--bc-amber-dim)" strokeWidth={1.2} />
+                    <text textAnchor="middle" dominantBaseline="central" fontSize={9} fill="var(--bc-amber)" fontFamily="var(--font-jbmono)">
+                      {agentGlyph(agent.type)}
+                    </text>
+                    <text className="bc-eco-label" y={32} textAnchor="middle" fontSize={9.5}>
+                      {agent.name}
+                    </text>
+                  </g>
                 </g>
               );
             })}
