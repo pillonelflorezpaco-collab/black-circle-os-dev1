@@ -261,6 +261,7 @@ model Agency {
   tasks               Task[]
   approvals           Approval[]
   executions          Execution[]
+  editingBatches      EditingBatch[]
 
   @@index([slug])
 }
@@ -294,6 +295,7 @@ model User {
   requestedApprovals Approval[]         @relation("ApprovalRequestedBy")
   decidedApprovals   Approval[]         @relation("ApprovalDecidedBy")
   requestedExecutions Execution[]       @relation("ExecutionRequestedBy")
+  editingBatches      EditingBatch[]    @relation("EditingBatchEditor")
 
   @@index([teamId])
   @@index([agencyId])
@@ -442,6 +444,7 @@ model Model {
   assignments         ModelAssignment[]
   platformConnections PlatformConnection[]
   assignedDevices     Device[]
+  editingBatches      EditingBatch[]
 
   @@index([blotatoAccountId])
   @@index([teamId])
@@ -602,7 +605,9 @@ model Video {
   modelId          String
   model            Model      @relation(fields: [modelId], references: [id], onDelete: Cascade)
   stage            VideoStage @default(RAW)
-  weekLabel        String? // e.g. "Semaine 39 2026" — the editing batch this file was synced into, for per-week tracking on the Espace Éditrice page
+  weekLabel        String? // e.g. "Semaine 39 2026" — kept for display even if the video is later detached from its batch
+  batchId          String?
+  batch            EditingBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
   driveFileId      String? // Drive file id, used to dedupe the daily sync job against files already imported as a Video
   driveUrl         String?
   thumbnailUrl     String?
@@ -624,6 +629,34 @@ model Video {
   @@index([assignedEditorId])
   @@index([agencyId])
   @@index([driveFileId])
+  @@index([batchId])
+}
+
+// One "block" on the Espace Éditrice kanban — a whole week's raw footage for
+// one model, edited à la chaîne (same music/style cut across every video in
+// it) and moved through the pipeline as a single unit rather than video by
+// video. Its `status` mirrors a subset of VideoStage (A_EDITER/EN_EDITION/
+// PRET_POUR_REVIEW); moving the card updates every Video in it at once.
+model EditingBatch {
+  id               String     @id @default(cuid())
+  modelId          String
+  model            Model      @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  weekLabel        String
+  assignedEditorId String?
+  assignedEditor   User?      @relation("EditingBatchEditor", fields: [assignedEditorId], references: [id])
+  status           VideoStage @default(A_EDITER)
+  note             String?    @db.Text
+  agencyId         String
+  agency           Agency     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  videos Video[]
+
+  @@unique([modelId, weekLabel, assignedEditorId])
+  @@index([agencyId])
+  @@index([assignedEditorId])
+  @@index([status])
 }
 
 // ─────────────────────────────────────────────────────────────

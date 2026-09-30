@@ -33,6 +33,19 @@ async function findAssignedEditorId(modelId: string): Promise<string | null> {
   return assignment?.userId ?? null;
 }
 
+/**
+ * Finds this model/week/editor's kanban block, creating it if this is the
+ * first file synced into it. Uses findFirst+create rather than upsert on the
+ * compound unique key — that key includes the nullable assignedEditorId,
+ * and a plain findFirst avoids relying on how the DB driver normalizes NULL
+ * inside a compound-unique WHERE.
+ */
+async function findOrCreateBatch(modelId: string, agencyId: string, editorId: string | null, weekLabel: string) {
+  const existing = await prisma.editingBatch.findFirst({ where: { modelId, weekLabel, assignedEditorId: editorId } });
+  if (existing) return existing;
+  return prisma.editingBatch.create({ data: { modelId, agencyId, assignedEditorId: editorId, weekLabel, status: "A_EDITER" } });
+}
+
 export async function syncDriveContentForAllModels(): Promise<{ modelsScanned: number; videosCreated: number }> {
   const models = await prisma.model.findMany({
     where: { driveFolderId: { not: null } },
@@ -66,11 +79,13 @@ export async function syncDriveContentForAllModels(): Promise<{ modelsScanned: n
         if (existing) continue;
 
         const assignedEditorId = await findAssignedEditorId(model.id);
+        const batch = await findOrCreateBatch(model.id, model.agencyId, assignedEditorId, weekLabel);
         await prisma.video.create({
           data: {
             title: file.name,
             model: { connect: { id: model.id } },
             agency: { connect: { id: model.agencyId } },
+            batch: { connect: { id: batch.id } },
             stage: "A_EDITER",
             weekLabel,
             driveFileId: file.id,
